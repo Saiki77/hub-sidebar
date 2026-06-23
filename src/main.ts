@@ -17,6 +17,8 @@ export interface HubSidebarSettings {
   showSwitcher: boolean;
   showLabels: boolean;
   hideTabBar: boolean;
+  showVerticalDivider: boolean;
+  graphAspect: number; // width / height of the framed graph box (1 = square)
 }
 
 export const DEFAULT_SETTINGS: HubSidebarSettings = {
@@ -24,6 +26,8 @@ export const DEFAULT_SETTINGS: HubSidebarSettings = {
   showSwitcher: true,
   showLabels: true,
   hideTabBar: true,
+  showVerticalDivider: false,
+  graphAspect: 1,
 };
 
 // The three views the switcher rotates between. Icons are Lucide names.
@@ -76,7 +80,13 @@ interface LeafWithContainer extends WorkspaceLeaf {
   containerEl: HTMLElement;
 }
 
-const BODY_CLASSES = ["hub-tiers-1", "hub-tiers-2", "hub-tiers-3", "hub-hide-tabbar"];
+const BODY_CLASSES = [
+  "hub-tiers-1",
+  "hub-tiers-2",
+  "hub-tiers-3",
+  "hub-hide-tabbar",
+  "hub-show-divider",
+];
 
 // ---------------------------------------------------------------------------
 
@@ -108,14 +118,17 @@ export default class HubSidebarPlugin extends Plugin {
 
   onunload() {
     document.body.classList.remove(...BODY_CLASSES);
+    document.body.style.removeProperty("--hub-graph-aspect");
     document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
   }
 
-  // --- body classes: outline tier limiting + tab-bar hide (CSS does the work) -
+  // --- body classes + CSS vars that drive the stylesheet ----------------------
   applyBodyClasses() {
     document.body.classList.remove(...BODY_CLASSES);
     document.body.classList.add("hub-tiers-" + this.settings.outlineTiers);
     if (this.settings.hideTabBar) document.body.classList.add("hub-hide-tabbar");
+    if (this.settings.showVerticalDivider) document.body.classList.add("hub-show-divider");
+    document.body.style.setProperty("--hub-graph-aspect", String(this.settings.graphAspect));
   }
 
   enableCore(id: string) {
@@ -293,5 +306,43 @@ export class HubSidebarSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }),
       );
+
+    new Setting(containerEl)
+      .setName("Show sidebar divider line")
+      .setDesc(
+        "Show the vertical divider line between the editor and the right sidebar. Off = the borderless Publish look.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.showVerticalDivider).onChange(async (v) => {
+          this.plugin.settings.showVerticalDivider = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    // --- graph box shape + live preview --------------------------------------
+    // Build the preview detached first so the slider's onChange can reference it,
+    // then append it BELOW the slider row.
+    const previewWrap = createDiv({ cls: "hub-aspect-preview-wrap" });
+    previewWrap.createDiv({ cls: "hub-aspect-preview-caption", text: "Preview" });
+    const preview = previewWrap.createDiv({ cls: "hub-aspect-preview" });
+    preview.createDiv({ cls: "hub-aspect-preview-dot" });
+    const applyAspect = (v: number) => preview.style.setProperty("aspect-ratio", String(v));
+    applyAspect(this.plugin.settings.graphAspect);
+
+    new Setting(containerEl)
+      .setName("Graph box shape")
+      .setDesc("Aspect ratio (width ÷ height) of the framed graph box. 1 = square, lower = taller, higher = wider.")
+      .addSlider((s) =>
+        s
+          .setLimits(0.6, 2, 0.05)
+          .setValue(this.plugin.settings.graphAspect)
+          .onChange(async (v) => {
+            this.plugin.settings.graphAspect = v;
+            applyAspect(v);
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    containerEl.appendChild(previewWrap);
   }
 }

@@ -74,13 +74,20 @@ body.hub-tiers-3 [data-type="outline"]
 }
 
 
-/* === Right sidebar: remove hairline borders ================================= */
-.workspace-split.mod-right-split,
-.workspace .mod-right-split {
+/* === Right sidebar: remove hairline borders =================================
+   The VERTICAL divider between the editor and the right sidebar is toggleable
+   via the "Show sidebar divider line" setting (body.hub-show-divider keeps it).
+   The other hairlines (inter-pane handle, tab header, leaf) are always removed. */
+body:not(.hub-show-divider) .workspace-split.mod-right-split,
+body:not(.hub-show-divider) .workspace .mod-right-split {
   border-inline-start: none !important;
   box-shadow: none !important;
 }
-.workspace:has(> .mod-right-split) > .workspace-leaf-resize-handle,
+body:not(.hub-show-divider) .workspace:has(> .mod-right-split) > .workspace-leaf-resize-handle {
+  border: none !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+}
 .workspace-split.mod-right-split .workspace-leaf-resize-handle {
   border: none !important;
   box-shadow: none !important;
@@ -105,7 +112,7 @@ body.hub-tiers-3 [data-type="outline"]
 .workspace-leaf-content[data-type="localgraph"],
 .workspace-leaf-content[data-type="backlink"],
 .workspace-leaf-content[data-type="outgoing-link"] {
-  padding: 6px 16px 16px 16px !important;  /* top right bottom left — the inset */
+  padding: 16px 16px 16px 16px !important;  /* top right bottom left — the inset */
   box-sizing: border-box !important;
 }
 .workspace-leaf-content[data-type="localgraph"] .view-content,
@@ -122,14 +129,14 @@ body.hub-tiers-3 [data-type="outline"]
   background-color: var(--background-primary);
 }
 
-/* Smaller graph box: cap its height so it reads as a card, not a full-height
-   panel. Tweak --hub-graph-height (e.g. 240px / 360px) or set it to none.
-   Drag the graph/outline divider so the pane ≈ this height to avoid a gap. */
-.workspace-leaf-content[data-type="localgraph"] {
-  --hub-graph-height: 300px;
-}
+/* Graph box shape: the aspect ratio comes from the "Graph box shape" setting via
+   the --hub-graph-aspect var (width / height; 1 = square). flex:0 0 auto stops the
+   box filling the pane height so the aspect actually drives the height; max-height
+   guards a very tall ratio from overflowing the pane. */
 .workspace-leaf-content[data-type="localgraph"] .view-content {
-  max-height: var(--hub-graph-height);
+  flex: 0 0 auto;
+  aspect-ratio: var(--hub-graph-aspect, 1);
+  max-height: 70vh;
 }
 
 /* Graph canvas fills + inherits the rounded corners. */
@@ -228,4 +235,33 @@ body.hub-hide-tabbar .workspace-split.mod-right-split
   .workspace-tabs:has(.workspace-leaf-content[data-type="outgoing-link"])
   > .workspace-tab-header-container {
   display: none !important;
+}
+
+
+/* === Settings: live preview of the "Graph box shape" ratio ================== */
+.hub-aspect-preview-wrap {
+  margin: 4px 0 18px;
+}
+.hub-aspect-preview-caption {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.hub-aspect-preview {
+  width: 180px;
+  max-width: 100%;
+  aspect-ratio: 1;            /* overridden inline by the plugin */
+  max-height: 220px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: var(--background-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hub-aspect-preview-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
 }
