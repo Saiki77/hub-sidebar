@@ -1,6 +1,6 @@
 {
   "name": "hub-sidebar",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Publish-style right sidebar: a framed local graph with a one-click Graph / Incoming / Outgoing switcher, plus a clean, borderless outline.",
   "main": "main.js",
   "scripts": {

@@ -186,7 +186,7 @@ body:not(.hub-show-divider) .workspace:has(> .mod-right-split) > .workspace-leaf
   padding: 2px;
   border-radius: var(--radius-m);
   background: var(--background-secondary);
-  box-shadow: var(--shadow-s);
+  box-shadow: none;
 }
 .hub-switcher-btn {
   display: flex;

@@ -1,7 +1,7 @@
 {
   "id": "hub-sidebar",
   "name": "Hub Sidebar",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "minAppVersion": "1.7.2",
   "description": "Publish-style right sidebar: a framed local graph with a one-click Graph / Incoming / Outgoing switcher, plus a clean, borderless outline.",
   "author": "Justus",
