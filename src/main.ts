@@ -15,11 +15,15 @@ import {
 export interface HubSidebarSettings {
   outlineTiers: number;
   showSwitcher: boolean;
+  showLabels: boolean;
+  hideTabBar: boolean;
 }
 
 export const DEFAULT_SETTINGS: HubSidebarSettings = {
   outlineTiers: 2,
   showSwitcher: true,
+  showLabels: true,
+  hideTabBar: true,
 };
 
 // The three views the switcher rotates between. Icons are Lucide names.
@@ -36,6 +40,14 @@ export const SWITCH_TYPES: SwitchType[] = [
 ];
 
 export const HOST_TYPES: string[] = SWITCH_TYPES.map((s) => s.type);
+
+// Header text shown above each framed box / the outline (Publish-style labels).
+export const VIEW_LABELS: Record<string, string> = {
+  localgraph: "Interactive graph",
+  backlink: "Incoming links",
+  "outgoing-link": "Outgoing links",
+  outline: "On this page",
+};
 
 // --- narrow types for undocumented-but-stable Obsidian internals ------------
 
@@ -64,6 +76,8 @@ interface LeafWithContainer extends WorkspaceLeaf {
   containerEl: HTMLElement;
 }
 
+const BODY_CLASSES = ["hub-tiers-1", "hub-tiers-2", "hub-tiers-3", "hub-hide-tabbar"];
+
 // ---------------------------------------------------------------------------
 
 export default class HubSidebarPlugin extends Plugin {
@@ -77,7 +91,7 @@ export default class HubSidebarPlugin extends Plugin {
     // settings shape so the merge is type-safe (no `any` leaking through).
     const saved = (await this.loadData()) as Partial<HubSidebarSettings> | null;
     this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
-    this.applyTierClass();
+    this.applyBodyClasses();
     this.addSettingTab(new HubSidebarSettingTab(this.app, this));
 
     // Best-effort: enable the core link plugins so morphing to backlink /
@@ -93,14 +107,15 @@ export default class HubSidebarPlugin extends Plugin {
   }
 
   onunload() {
-    document.body.classList.remove("hub-tiers-1", "hub-tiers-2", "hub-tiers-3");
-    document.querySelectorAll(".hub-switcher").forEach((el) => el.remove());
+    document.body.classList.remove(...BODY_CLASSES);
+    document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
   }
 
-  // --- outline tier limiting (driven by a body class; CSS does the hiding) ---
-  applyTierClass() {
-    document.body.classList.remove("hub-tiers-1", "hub-tiers-2", "hub-tiers-3");
+  // --- body classes: outline tier limiting + tab-bar hide (CSS does the work) -
+  applyBodyClasses() {
+    document.body.classList.remove(...BODY_CLASSES);
     document.body.classList.add("hub-tiers-" + this.settings.outlineTiers);
+    if (this.settings.hideTabBar) document.body.classList.add("hub-hide-tabbar");
   }
 
   enableCore(id: string) {
@@ -114,21 +129,33 @@ export default class HubSidebarPlugin extends Plugin {
     }
   }
 
-  // --- switcher injection ----------------------------------------------------
+  // --- label + switcher injection --------------------------------------------
   injectAll() {
-    if (!this.settings.showSwitcher) {
-      document.querySelectorAll(".hub-switcher").forEach((el) => el.remove());
-      return;
-    }
     this.app.workspace.iterateAllLeaves((leaf) => {
       const view = leaf.view as ViewWithContent | undefined;
       if (!view || typeof view.getViewType !== "function") return;
-      const type = view.getViewType();
-      if (HOST_TYPES.indexOf(type) === -1) return;
       if (!this.isInRightSidebar(leaf)) return;
+      const type = view.getViewType();
       const container = view.contentEl; // .view-content (the framed box)
       if (!container) return;
-      this.ensureSwitcher(leaf, container, type);
+
+      const isHost = HOST_TYPES.indexOf(type) !== -1;
+      const isOutline = type === "outline";
+      if (!isHost && !isOutline) return;
+
+      // header label above the box / outline
+      if (this.settings.showLabels && VIEW_LABELS[type]) {
+        this.ensureLabel(container, VIEW_LABELS[type]);
+      } else {
+        this.removeLabel(container);
+      }
+
+      // the Graph / Incoming / Outgoing switcher (host views only)
+      if (isHost && this.settings.showSwitcher) {
+        this.ensureSwitcher(leaf, container, type);
+      } else {
+        container.querySelectorAll(".hub-switcher").forEach((el) => el.remove());
+      }
     });
   }
 
@@ -139,6 +166,22 @@ export default class HubSidebarPlugin extends Plugin {
       el = el.parentElement;
     }
     return false;
+  }
+
+  // Inserts/updates a header label as the sibling immediately before the
+  // framed `.view-content`, so it renders above the box (Publish-style).
+  ensureLabel(container: HTMLElement, text: string) {
+    const host = container.parentElement; // .workspace-leaf-content
+    if (!host) return;
+    let label = host.querySelector<HTMLElement>(":scope > .hub-label");
+    if (!label) label = createDiv({ cls: "hub-label" });
+    if (label.nextElementSibling !== container) host.insertBefore(label, container);
+    if (label.getText() !== text) label.setText(text);
+  }
+
+  removeLabel(container: HTMLElement) {
+    const host = container.parentElement;
+    host?.querySelector(":scope > .hub-label")?.remove();
   }
 
   ensureSwitcher(leaf: WorkspaceLeaf, container: HTMLElement, activeType: string) {
@@ -181,7 +224,9 @@ export default class HubSidebarPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
-    this.applyTierClass();
+    this.applyBodyClasses();
+    // clear stale labels/switchers, then re-inject per current settings
+    document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
     this.injectAll();
   }
 }
@@ -201,7 +246,7 @@ export class HubSidebarSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Outline heading tiers")
       .setDesc(
-        'How many heading levels to show in the outline ("ON THIS PAGE"). Counts nesting depth, not literal H1/H2.',
+        'How many heading levels to show in the outline ("On this page"). Counts nesting depth, not literal H1/H2.',
       )
       .addDropdown((d) =>
         d
@@ -218,11 +263,33 @@ export class HubSidebarSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Show graph switcher")
       .setDesc(
-        "Show the Graph / Incoming / Outgoing buttons in the top-right of the framed graph box.",
+        "Show the Graph / Incoming / Outgoing buttons in the top-right of the framed box.",
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.showSwitcher).onChange(async (v) => {
           this.plugin.settings.showSwitcher = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Show section labels")
+      .setDesc('The "Interactive graph" / "On this page" headers above each box.')
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.showLabels).onChange(async (v) => {
+          this.plugin.settings.showLabels = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Hide sidebar tab bar")
+      .setDesc(
+        "Hide the row of tab icons above the graph box. Note: this also hides switching to any OTHER tabs sharing that group (calendar, tags, etc.).",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.hideTabBar).onChange(async (v) => {
+          this.plugin.settings.hideTabBar = v;
           await this.plugin.saveSettings();
         }),
       );
