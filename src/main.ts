@@ -19,6 +19,9 @@ export interface HubSidebarSettings {
   hideTabBar: boolean;
   showVerticalDivider: boolean;
   graphAspect: number; // width / height of the framed graph box (1 = square)
+  graphTopPad: number; // px of space above the framed box
+  centerOnScreen: boolean; // shift the editor column to the window center
+  sidebarRibbon: boolean; // show a ribbon icon that toggles the right sidebar
 }
 
 export const DEFAULT_SETTINGS: HubSidebarSettings = {
@@ -28,6 +31,9 @@ export const DEFAULT_SETTINGS: HubSidebarSettings = {
   hideTabBar: true,
   showVerticalDivider: false,
   graphAspect: 1,
+  graphTopPad: 16,
+  centerOnScreen: false,
+  sidebarRibbon: false,
 };
 
 // The three views the switcher rotates between. Icons are Lucide names.
@@ -86,6 +92,7 @@ const BODY_CLASSES = [
   "hub-tiers-3",
   "hub-hide-tabbar",
   "hub-show-divider",
+  "hub-center-screen",
 ];
 
 // ---------------------------------------------------------------------------
@@ -95,6 +102,17 @@ export default class HubSidebarPlugin extends Plugin {
 
   // `injectAll` is bound and reused as a listener; keep a stable reference.
   private boundInjectAll!: () => void;
+
+  // `recompute` is registered on several workspace/window events; keep a stable
+  // reference so the registrations all share one rAF-debounced implementation.
+  private boundRecompute!: () => void;
+
+  // Pending requestAnimationFrame handle for the debounced offset recompute.
+  private centerRaf: number | null = null;
+
+  // The optional "toggle right sidebar" ribbon element, so it can be added and
+  // removed live as the `sidebarRibbon` setting flips.
+  private ribbonEl: HTMLElement | null = null;
 
   async onload() {
     // `loadData()` is typed `Promise<any>`; narrow it to a partial of our
@@ -110,15 +128,45 @@ export default class HubSidebarPlugin extends Plugin {
     this.enableCore("backlink");
     this.enableCore("outgoing-link");
 
+    // Feature 2: a command (palette + assignable hotkey) that toggles the right
+    // sidebar. Always registered; the optional ribbon is gated by a setting.
+    this.addCommand({
+      id: "toggle-right-sidebar",
+      name: "Toggle the right sidebar",
+      callback: () => this.toggleRightSidebar(),
+    });
+    this.syncRibbon();
+
     this.boundInjectAll = () => this.injectAll();
+    this.boundRecompute = () => this.scheduleCenterOffset();
     this.registerEvent(this.app.workspace.on("layout-change", this.boundInjectAll));
     this.registerEvent(this.app.workspace.on("active-leaf-change", this.boundInjectAll));
-    this.app.workspace.onLayoutReady(() => this.injectAll());
+
+    // Feature 1: keep --hub-center-offset fresh. updateCenterOffset() early-
+    // returns when the feature is off, so these listeners cost nothing extra in
+    // the default (disabled) state.
+    this.registerEvent(this.app.workspace.on("resize", this.boundRecompute));
+    this.registerEvent(this.app.workspace.on("layout-change", this.boundRecompute));
+    this.registerDomEvent(window, "resize", this.boundRecompute);
+
+    this.app.workspace.onLayoutReady(() => {
+      this.injectAll();
+      this.updateCenterOffset();
+    });
   }
 
   onunload() {
+    if (this.centerRaf !== null) {
+      window.cancelAnimationFrame(this.centerRaf);
+      this.centerRaf = null;
+    }
     document.body.classList.remove(...BODY_CLASSES);
     document.body.style.removeProperty("--hub-graph-aspect");
+    document.body.style.removeProperty("--hub-center-offset");
+    if (this.ribbonEl) {
+      this.ribbonEl.remove();
+      this.ribbonEl = null;
+    }
     document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
   }
 
@@ -128,7 +176,98 @@ export default class HubSidebarPlugin extends Plugin {
     document.body.classList.add("hub-tiers-" + this.settings.outlineTiers);
     if (this.settings.hideTabBar) document.body.classList.add("hub-hide-tabbar");
     if (this.settings.showVerticalDivider) document.body.classList.add("hub-show-divider");
+    if (this.settings.centerOnScreen) document.body.classList.add("hub-center-screen");
     document.body.style.setProperty("--hub-graph-aspect", String(this.settings.graphAspect));
+    document.body.style.setProperty("--hub-top-pad", this.settings.graphTopPad + "px");
+    // The class just turned on/off; make sure the offset + box size are current.
+    this.applyGraphSizeAll();
+    this.updateCenterOffset();
+  }
+
+  // --- Feature 1: center-on-screen offset ------------------------------------
+  // Debounce bursts of resize events (e.g. dragging the sidebar handle) into a
+  // single layout read + var write per animation frame.
+  scheduleCenterOffset() {
+    if (this.centerRaf !== null) return;
+    this.centerRaf = window.requestAnimationFrame(() => {
+      this.centerRaf = null;
+      this.applyGraphSizeAll();
+      this.updateCenterOffset();
+    });
+  }
+
+  // offset = (rightSidebarWidth - leftSidebarWidth) / 2, clamped to the pane's
+  // free half-width so the column can never be pushed out of its pane. Written
+  // to --hub-center-offset on <body>; only the transformed layer repaints, so
+  // CM6 is never asked to remeasure (caret/click geometry stays correct).
+  updateCenterOffset() {
+    // When the feature is off (the default) the CSS ignores the var, so the
+    // per-event layout reads below would be pure waste. Clear any stale offset
+    // once, then bail before forcing a reflow.
+    if (!this.settings.centerOnScreen) {
+      this.writeCenterOffset(0);
+      return;
+    }
+
+    const ws = this.app.workspace;
+    const leftCollapsed = ws.leftSplit?.collapsed ?? true;
+    const rightCollapsed = ws.rightSplit?.collapsed ?? true;
+
+    const leftEl = document.querySelector<HTMLElement>(
+      ".workspace-split.mod-left-split",
+    );
+    const rightEl = document.querySelector<HTMLElement>(
+      ".workspace-split.mod-right-split",
+    );
+    const leftW = !leftCollapsed && leftEl ? leftEl.clientWidth : 0;
+    const rightW = !rightCollapsed && rightEl ? rightEl.clientWidth : 0;
+
+    let offset = (rightW - leftW) / 2;
+
+    // Clamp to the root pane's free half-width using the live readable column.
+    const root = document.querySelector<HTMLElement>(".workspace-split.mod-root");
+    const paneW = root ? root.clientWidth : 0;
+    const sizer = root?.querySelector<HTMLElement>(
+      ".cm-sizer, .markdown-preview-sizer",
+    );
+    const colW = sizer ? sizer.getBoundingClientRect().width : 0;
+    const freeHalf = Math.max(0, (paneW - colW) / 2);
+    offset = Math.max(-freeHalf, Math.min(freeHalf, offset));
+
+    this.writeCenterOffset(offset);
+  }
+
+  // Single writer for --hub-center-offset; rounds to a whole px and skips the
+  // DOM write when unchanged. Centralizing it also keeps the value off a string
+  // literal at the call site (the value is always derived, never a constant).
+  writeCenterOffset(offset: number) {
+    const px = Math.round(offset) + "px";
+    if (document.body.style.getPropertyValue("--hub-center-offset") !== px) {
+      document.body.style.setProperty("--hub-center-offset", px);
+    }
+  }
+
+  // --- Feature 2: right-sidebar toggle + optional ribbon ----------------------
+  toggleRightSidebar() {
+    const right = this.app.workspace.rightSplit;
+    if (!right) return;
+    right.toggle();
+    // The pane width just changed; re-center immediately if Feature 1 is on.
+    this.updateCenterOffset();
+  }
+
+  // Adds or removes the ribbon icon to match the `sidebarRibbon` setting.
+  syncRibbon() {
+    if (this.settings.sidebarRibbon && !this.ribbonEl) {
+      this.ribbonEl = this.addRibbonIcon(
+        "sidebar-right",
+        "Toggle right sidebar",
+        () => this.toggleRightSidebar(),
+      );
+    } else if (!this.settings.sidebarRibbon && this.ribbonEl) {
+      this.ribbonEl.remove();
+      this.ribbonEl = null;
+    }
   }
 
   enableCore(id: string) {
@@ -169,6 +308,9 @@ export default class HubSidebarPlugin extends Plugin {
       } else {
         container.querySelectorAll(".hub-switcher").forEach((el) => el.remove());
       }
+
+      // explicit height for the graph box (the local graph only)
+      if (type === "localgraph") this.applyGraphSize(container);
     });
   }
 
@@ -179,6 +321,27 @@ export default class HubSidebarPlugin extends Plugin {
       el = el.parentElement;
     }
     return false;
+  }
+
+  // --- graph box sizing -------------------------------------------------------
+  // Minimal forces the graph view to grow and fill the pane height, which beats
+  // CSS aspect-ratio. So set an explicit pixel height (= box width / chosen
+  // ratio) inline, which the theme can't override and which updates live.
+  applyGraphSize(container: HTMLElement) {
+    const w = container.clientWidth;
+    if (w <= 0) return; // hidden/collapsed pane — re-sized when it becomes visible
+    const aspect = this.settings.graphAspect || 1;
+    container.style.height = Math.round(w / aspect) + "px";
+  }
+
+  applyGraphSizeAll() {
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const view = leaf.view as ViewWithContent | undefined;
+      if (!view || typeof view.getViewType !== "function") return;
+      if (view.getViewType() !== "localgraph") return;
+      if (!this.isInRightSidebar(leaf)) return;
+      if (view.contentEl) this.applyGraphSize(view.contentEl);
+    });
   }
 
   // Inserts/updates a header label as the sibling immediately before the
@@ -238,6 +401,7 @@ export default class HubSidebarPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.applyBodyClasses();
+    this.syncRibbon();
     // clear stale labels/switchers, then re-inject per current settings
     document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
     this.injectAll();
@@ -344,5 +508,42 @@ export class HubSidebarSettingTab extends PluginSettingTab {
       );
 
     containerEl.appendChild(previewWrap);
+
+    new Setting(containerEl)
+      .setName("Graph box top padding")
+      .setDesc("Space above the framed box — how far down it sits, in pixels.")
+      .addSlider((s) =>
+        s
+          .setLimits(0, 48, 2)
+          .setValue(this.plugin.settings.graphTopPad)
+          .onChange(async (v) => {
+            this.plugin.settings.graphTopPad = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("Center note on screen")
+      .setDesc(
+        "Shift the editor column so it stays centered in the window, compensating for the open sidebars. Best for a single editor pane; side-by-side splits and the line-number gutter are best-effort.",
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.centerOnScreen).onChange(async (v) => {
+          this.plugin.settings.centerOnScreen = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("Right sidebar ribbon icon")
+      .setDesc(
+        'Show a ribbon icon that toggles the right sidebar. The "Toggle the right sidebar" command (assignable to a hotkey) is always available regardless of this setting.',
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.sidebarRibbon).onChange(async (v) => {
+          this.plugin.settings.sidebarRibbon = v;
+          await this.plugin.saveSettings();
+        }),
+      );
   }
 }

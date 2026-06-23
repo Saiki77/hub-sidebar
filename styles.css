@@ -112,7 +112,7 @@ body:not(.hub-show-divider) .workspace:has(> .mod-right-split) > .workspace-leaf
 .workspace-leaf-content[data-type="localgraph"],
 .workspace-leaf-content[data-type="backlink"],
 .workspace-leaf-content[data-type="outgoing-link"] {
-  padding: 16px 16px 16px 16px !important;  /* top right bottom left — the inset */
+  padding: var(--hub-top-pad, 16px) 16px 16px 16px !important;  /* top via setting */
   box-sizing: border-box !important;
 }
 .workspace-leaf-content[data-type="localgraph"] .view-content,
@@ -129,13 +129,13 @@ body:not(.hub-show-divider) .workspace:has(> .mod-right-split) > .workspace-leaf
   background-color: var(--background-primary);
 }
 
-/* Graph box shape: the aspect ratio comes from the "Graph box shape" setting via
-   the --hub-graph-aspect var (width / height; 1 = square). flex:0 0 auto stops the
-   box filling the pane height so the aspect actually drives the height; max-height
-   guards a very tall ratio from overflowing the pane. */
+/* Graph box shape: the plugin sets an explicit inline HEIGHT = box width / the
+   "Graph box shape" ratio. We can't use CSS aspect-ratio here because Minimal
+   forces the graph view to grow and fill the pane height (which overrides
+   aspect-ratio). flex:0 0 auto !important stops that growth so the inline height
+   is honored; max-height guards a very tall ratio from overflowing the pane. */
 .workspace-leaf-content[data-type="localgraph"] .view-content {
-  flex: 0 0 auto;
-  aspect-ratio: var(--hub-graph-aspect, 1);
+  flex: 0 0 auto !important;
   max-height: 70vh;
 }
 
@@ -265,3 +265,60 @@ body.hub-hide-tabbar .workspace-split.mod-right-split
   border-radius: 50%;
   background: var(--interactive-accent);
 }
+
+
+/* === Center note on screen ==================================================
+   Gated by body.hub-center-screen; the plugin keeps --hub-center-offset (px,
+   may be negative) up to date as the sidebars open/close/resize. Scoped to the
+   ROOT editor area only (.workspace-split.mod-root), so the sidebars, hover
+   popovers and the settings pane are never touched. Applies to BOTH source
+   (Live Preview) and reading views by shifting the readable-width SIZER.
+
+   A pure translateX moves the already-laid-out column WITHOUT changing layout
+   width, so line wrapping, gutters, and CodeMirror's internal geometry are
+   untouched. Both directions of CM6's coordinate mapping (caretRangeFromPoint
+   for click->position and getBoundingClientRect for caret/selection) are
+   transform-aware in Obsidian's Chromium runtime, so click-to-position and the
+   blinking caret stay aligned with the translated text. transform-origin is
+   set explicitly though it is irrelevant for a pure translateX; no will-change
+   / 3D transform, to avoid layer-promotion text blur. The plugin clamps the
+   offset to the pane's free half-width so the column is never pushed off-pane. */
+body {
+  --hub-center-offset: 0px;
+}
+
+/* SOURCE / LIVE PREVIEW: shift the readable-width sizer of the root editor.
+   Direct-child combinators keep us off embedded notes' own .cm-sizer. */
+body.hub-center-screen
+  .workspace-split.mod-root
+  .markdown-source-view.mod-cm6 > .cm-editor > .cm-scroller > .cm-sizer {
+  transform: translateX(var(--hub-center-offset));
+  transform-origin: top center;
+}
+
+/* READING VIEW: same shift on the preview sizer of the root editor. The
+   direct-child chain (> .markdown-preview-view > .markdown-preview-sizer)
+   already excludes embedded notes, whose preview-sizer is nested deeper. */
+body.hub-center-screen
+  .workspace-split.mod-root
+  .markdown-reading-view
+  > .markdown-preview-view
+  > .markdown-preview-sizer {
+  transform: translateX(var(--hub-center-offset));
+  transform-origin: top center;
+}
+
+/* LINE-NUMBER GUTTER: when line numbers (or any CM6 gutter) are enabled, the
+   gutter is a sibling of .cm-sizer inside .cm-scroller. Shift it by the same
+   offset so the numbers stay attached to their lines. Best-effort: it is
+   position: sticky, so a translate keeps it aligned with the moved content. */
+body.hub-center-screen
+  .workspace-split.mod-root
+  .markdown-source-view.mod-cm6 > .cm-editor > .cm-scroller > .cm-gutters {
+  transform: translateX(var(--hub-center-offset));
+}
+
+/* NOTE: no overflow-x: clip safety net here. Clipping .cm-scroller would make
+   legitimate horizontal scroll (unwrapped long lines, wide code blocks/tables)
+   unreachable. The plugin clamps --hub-center-offset to the pane's free
+   half-width, so the shift never reveals a scrollbar in the first place. */
