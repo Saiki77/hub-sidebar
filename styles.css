@@ -322,3 +322,14 @@ body.hub-center-screen
    legitimate horizontal scroll (unwrapped long lines, wide code blocks/tables)
    unreachable. The plugin clamps --hub-center-offset to the pane's free
    half-width, so the shift never reveals a scrollbar in the first place. */
+
+
+/* === Status-bar "toggle right sidebar" button =============================== */
+.hub-sidebar-toggle {
+  display: flex;
+  align-items: center;
+}
+.hub-sidebar-toggle svg {
+  width: 14px;
+  height: 14px;
+}

@@ -110,9 +110,10 @@ export default class HubSidebarPlugin extends Plugin {
   // Pending requestAnimationFrame handle for the debounced offset recompute.
   private centerRaf: number | null = null;
 
-  // The optional "toggle right sidebar" ribbon element, so it can be added and
-  // removed live as the `sidebarRibbon` setting flips.
-  private ribbonEl: HTMLElement | null = null;
+  // The optional status-bar "toggle right sidebar" button, added/removed live as
+  // the `sidebarRibbon` setting flips. Status bar, NOT ribbon, because Minimal's
+  // "Hide ribbon" option hides ribbon icons entirely.
+  private statusEl: HTMLElement | null = null;
 
   async onload() {
     // `loadData()` is typed `Promise<any>`; narrow it to a partial of our
@@ -135,7 +136,7 @@ export default class HubSidebarPlugin extends Plugin {
       name: "Toggle the right sidebar",
       callback: () => this.toggleRightSidebar(),
     });
-    this.syncRibbon();
+    this.syncToggleButton();
 
     this.boundInjectAll = () => this.injectAll();
     this.boundRecompute = () => this.scheduleCenterOffset();
@@ -163,9 +164,9 @@ export default class HubSidebarPlugin extends Plugin {
     document.body.classList.remove(...BODY_CLASSES);
     document.body.style.removeProperty("--hub-graph-aspect");
     document.body.style.removeProperty("--hub-center-offset");
-    if (this.ribbonEl) {
-      this.ribbonEl.remove();
-      this.ribbonEl = null;
+    if (this.statusEl) {
+      this.statusEl.remove();
+      this.statusEl = null;
     }
     document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
   }
@@ -256,17 +257,20 @@ export default class HubSidebarPlugin extends Plugin {
     this.updateCenterOffset();
   }
 
-  // Adds or removes the ribbon icon to match the `sidebarRibbon` setting.
-  syncRibbon() {
-    if (this.settings.sidebarRibbon && !this.ribbonEl) {
-      this.ribbonEl = this.addRibbonIcon(
-        "sidebar-right",
-        "Toggle right sidebar",
-        () => this.toggleRightSidebar(),
-      );
-    } else if (!this.settings.sidebarRibbon && this.ribbonEl) {
-      this.ribbonEl.remove();
-      this.ribbonEl = null;
+  // Adds or removes a status-bar toggle button to match the `sidebarRibbon`
+  // setting. Uses the status bar (not addRibbonIcon) so it stays visible even
+  // when Minimal's "Hide ribbon" option is on.
+  syncToggleButton() {
+    if (this.settings.sidebarRibbon && !this.statusEl) {
+      const el = this.addStatusBarItem();
+      el.addClass("hub-sidebar-toggle", "mod-clickable");
+      setIcon(el, "panel-right");
+      el.setAttribute("aria-label", "Toggle right sidebar");
+      el.addEventListener("click", () => this.toggleRightSidebar());
+      this.statusEl = el;
+    } else if (!this.settings.sidebarRibbon && this.statusEl) {
+      this.statusEl.remove();
+      this.statusEl = null;
     }
   }
 
@@ -401,7 +405,7 @@ export default class HubSidebarPlugin extends Plugin {
   async saveSettings() {
     await this.saveData(this.settings);
     this.applyBodyClasses();
-    this.syncRibbon();
+    this.syncToggleButton();
     // clear stale labels/switchers, then re-inject per current settings
     document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
     this.injectAll();
@@ -535,9 +539,9 @@ export class HubSidebarSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Right sidebar ribbon icon")
+      .setName("Right sidebar toggle button")
       .setDesc(
-        'Show a ribbon icon that toggles the right sidebar. The "Toggle the right sidebar" command (assignable to a hotkey) is always available regardless of this setting.',
+        'Add a status-bar button that toggles the right sidebar. (It lives in the status bar, not the ribbon, since Minimal hides the ribbon.) The "Toggle the right sidebar" command — assignable to a hotkey — is always available regardless of this setting.',
       )
       .addToggle((t) =>
         t.setValue(this.plugin.settings.sidebarRibbon).onChange(async (v) => {
