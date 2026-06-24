@@ -1,42 +1,43 @@
 # Hub Sidebar
 
-A small Obsidian plugin that gives the right sidebar an Obsidian
-Publish ("Obsidian Hub") look, and adds the one thing CSS can't: a real,
-clickable **Graph / Incoming / Outgoing** switcher on the framed graph box.
+Give Obsidian's right sidebar an **Obsidian Publish** ("Obsidian Hub") look — a
+framed local-graph card and a clean "On this page" outline — plus the one thing
+CSS can't do: a real, clickable **Graph / Incoming / Outgoing** switcher on the
+graph card.
 
-## What it does
-- Frames the Local Graph (and Backlinks / Outgoing Links) in a rounded, borderless box.
-- Cleans the outline into a plain "ON THIS PAGE" text list (no chevrons, no toolbar, no tab icon).
-- Removes the right-sidebar hairline borders.
-- Injects a top-right switcher that morphs the framed pane between Graph,
-  Incoming links (backlinks), and Outgoing links — in place.
-- Settings: outline tiers (1/2/3) and switcher on/off.
+![Hub Sidebar](docs/screenshots/sidebar.webp)
 
-## Install (manual — this isn't in the community store)
+## Features
 
-The plugin needs three files in your vault: `main.js`, `manifest.json`, and `styles.css`.
-Grab them from a [GitHub release](../../releases) or build them yourself (see Development).
+- **Framed graph card** — wraps the local graph (and Backlinks / Outgoing Links)
+  in a rounded, borderless box, with adjustable shape and top offset.
+- **One-click switcher** — buttons on the card morph it between the local graph,
+  incoming links (backlinks), and outgoing links, in place.
+- **Section labels** — "Interactive graph" / "On this page" headers, Publish-style.
+- **Clean outline** — a plain-text "On this page" list: no chevrons, no toolbar,
+  with a configurable heading depth (1–3 tiers).
+- **Borderless sidebar** — removes the hairline borders (the editor↔sidebar
+  divider is an optional toggle).
+- **Center note on screen** — optional: keeps the editor column centered in the
+  window when the sidebar is open.
+- **Right-sidebar toggle** — a command (assignable to a hotkey) and an optional
+  status-bar button to hide/show the sidebar.
 
-1. Create the folder `.obsidian/plugins/hub-sidebar/` in your vault.
-   - Easy route: in Obsidian, **Settings → Community plugins**. If community
-     plugins are off, turn them on. Click the **folder icon** next to
-     "Installed plugins" to open the plugins folder, then create `hub-sidebar` inside.
-   - Finder works too (Finder can write to the iCloud vault).
-2. Copy `main.js`, `manifest.json`, and `styles.css` into that folder.
-3. Back in **Settings → Community plugins**, click **reload** (or reopen
-   Settings), find **Hub Sidebar**, and toggle it **ON**.
-4. Turn **OFF** the old `obsidian-hub-sidebar` CSS snippet
-   (Settings → Appearance → CSS snippets) so the two don't duplicate rules.
-5. Make sure the Local Graph is open in the right sidebar. The In/Out icons
-   appear in the top-right of the frame.
+## Screenshots
 
-The plugin best-effort enables the core **Backlinks** and **Outgoing Links**
-plugins so the switcher works; if a switch fails you'll see a notice telling you
-to enable them.
+![Hub Sidebar in context](docs/screenshots/in-context-1.webp)
+
+![Graph and outline alongside a math note](docs/screenshots/in-context-2.webp)
+
+## Settings
+
+Outline heading tiers · graph switcher · section labels · hide tab bar · sidebar
+divider line · graph box shape (with a live preview) · graph box top padding ·
+center note on screen · right-sidebar toggle button.
 
 ## Development
 
-This is a TypeScript project bundled with esbuild (entry `src/main.ts` → root `main.js`).
+A TypeScript project bundled with esbuild (entry `src/main.ts` → root `main.js`).
 
 ```bash
 npm install          # install dev dependencies
@@ -45,12 +46,8 @@ npm run build        # tsc --noEmit typecheck, then a minified production bundle
 npm run lint         # eslint with the Obsidian plugin-guideline rules
 ```
 
-For live iteration, symlink or copy the repo into
-`.obsidian/plugins/hub-sidebar/` and run `npm run dev`, then reload the plugin
-in Obsidian (Settings → Community plugins → toggle off/on, or the "Reload app" command).
-
-`styles.css` is hand-written at the repo root and auto-loaded by Obsidian — it is
-not bundled. `main.js` and `styles.css` are committed (they are the release assets).
+`styles.css` is hand-written at the repo root and auto-loaded by Obsidian.
+`main.js` and `styles.css` are committed — they are the release assets.
 
 ## Release
 
@@ -60,13 +57,11 @@ git push --follow-tags
 ```
 
 Pushing the tag triggers `.github/workflows/release.yml`, which lints, builds,
-verifies `manifest.json` version matches the tag, attests build provenance, and
-publishes a GitHub release attaching `main.js`, `manifest.json`, and `styles.css`.
+verifies `manifest.json` matches the tag, attests build provenance, and publishes
+a GitHub release with `main.js`, `manifest.json`, and `styles.css`.
 
 ## Notes
-- Uses `:has()` and `Workspace.revealLeaf` (added in Obsidian 1.7.2) → needs Obsidian ~1.7.2+
-  (declared as `minAppVersion` in `manifest.json`).
-- Theme-agnostic (core selectors + core CSS variables).
-- Reaches a few undocumented-but-stable Obsidian internals (`internalPlugins`,
-  a leaf's `containerEl`, a leaf view's `contentEl`/`getViewType`) through narrow
-  typed casts, not `any`.
+
+- Needs Obsidian **1.7.2+** (declared as `minAppVersion`).
+- Theme-agnostic (core selectors + CSS variables); tuned to sit well with the
+  Minimal theme.
