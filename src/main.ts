@@ -161,25 +161,25 @@ export default class HubSidebarPlugin extends Plugin {
       window.cancelAnimationFrame(this.centerRaf);
       this.centerRaf = null;
     }
-    document.body.classList.remove(...BODY_CLASSES);
-    document.body.style.removeProperty("--hub-graph-aspect");
-    document.body.style.removeProperty("--hub-center-offset");
+    activeDocument.body.classList.remove(...BODY_CLASSES);
+    activeDocument.body.style.removeProperty("--hub-graph-aspect");
+    activeDocument.body.style.removeProperty("--hub-center-offset");
     if (this.statusEl) {
       this.statusEl.remove();
       this.statusEl = null;
     }
-    document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
+    activeDocument.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
   }
 
   // --- body classes + CSS vars that drive the stylesheet ----------------------
   applyBodyClasses() {
-    document.body.classList.remove(...BODY_CLASSES);
-    document.body.classList.add("hub-tiers-" + this.settings.outlineTiers);
-    if (this.settings.hideTabBar) document.body.classList.add("hub-hide-tabbar");
-    if (this.settings.showVerticalDivider) document.body.classList.add("hub-show-divider");
-    if (this.settings.centerOnScreen) document.body.classList.add("hub-center-screen");
-    document.body.style.setProperty("--hub-graph-aspect", String(this.settings.graphAspect));
-    document.body.style.setProperty("--hub-top-pad", this.settings.graphTopPad + "px");
+    activeDocument.body.classList.remove(...BODY_CLASSES);
+    activeDocument.body.classList.add("hub-tiers-" + this.settings.outlineTiers);
+    if (this.settings.hideTabBar) activeDocument.body.classList.add("hub-hide-tabbar");
+    if (this.settings.showVerticalDivider) activeDocument.body.classList.add("hub-show-divider");
+    if (this.settings.centerOnScreen) activeDocument.body.classList.add("hub-center-screen");
+    activeDocument.body.style.setProperty("--hub-graph-aspect", String(this.settings.graphAspect));
+    activeDocument.body.style.setProperty("--hub-top-pad", this.settings.graphTopPad + "px");
     // The class just turned on/off; make sure the offset + box size are current.
     this.applyGraphSizeAll();
     this.updateCenterOffset();
@@ -214,10 +214,10 @@ export default class HubSidebarPlugin extends Plugin {
     const leftCollapsed = ws.leftSplit?.collapsed ?? true;
     const rightCollapsed = ws.rightSplit?.collapsed ?? true;
 
-    const leftEl = document.querySelector<HTMLElement>(
+    const leftEl = activeDocument.querySelector<HTMLElement>(
       ".workspace-split.mod-left-split",
     );
-    const rightEl = document.querySelector<HTMLElement>(
+    const rightEl = activeDocument.querySelector<HTMLElement>(
       ".workspace-split.mod-right-split",
     );
     const leftW = !leftCollapsed && leftEl ? leftEl.clientWidth : 0;
@@ -226,7 +226,7 @@ export default class HubSidebarPlugin extends Plugin {
     let offset = (rightW - leftW) / 2;
 
     // Clamp to the root pane's free half-width using the live readable column.
-    const root = document.querySelector<HTMLElement>(".workspace-split.mod-root");
+    const root = activeDocument.querySelector<HTMLElement>(".workspace-split.mod-root");
     const paneW = root ? root.clientWidth : 0;
     const sizer = root?.querySelector<HTMLElement>(
       ".cm-sizer, .markdown-preview-sizer",
@@ -243,8 +243,8 @@ export default class HubSidebarPlugin extends Plugin {
   // literal at the call site (the value is always derived, never a constant).
   writeCenterOffset(offset: number) {
     const px = Math.round(offset) + "px";
-    if (document.body.style.getPropertyValue("--hub-center-offset") !== px) {
-      document.body.style.setProperty("--hub-center-offset", px);
+    if (activeDocument.body.style.getPropertyValue("--hub-center-offset") !== px) {
+      activeDocument.body.style.setProperty("--hub-center-offset", px);
     }
   }
 
@@ -407,7 +407,7 @@ export default class HubSidebarPlugin extends Plugin {
     this.applyBodyClasses();
     this.syncToggleButton();
     // clear stale labels/switchers, then re-inject per current settings
-    document.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
+    activeDocument.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
     this.injectAll();
   }
 }
