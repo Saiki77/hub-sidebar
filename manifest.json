@@ -1,10 +1,10 @@
 {
   "id": "hub-sidebar",
   "name": "Hub Sidebar",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "minAppVersion": "1.7.2",
-  "description": "Publish-style right sidebar: a framed local graph with a one-click Graph / Incoming / Outgoing switcher, plus a clean, borderless outline.",
-  "author": "Justus",
-  "authorUrl": "",
+  "description": "Frame the local graph and outline in a clean, Publish-style right-sidebar card, with a one-click Graph / Incoming / Outgoing switcher.",
+  "author": "Saiki77",
+  "authorUrl": "https://github.com/Saiki77",
   "isDesktopOnly": false
 }
