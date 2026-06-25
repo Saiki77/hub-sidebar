@@ -3,14 +3,26 @@ import {
   PluginSettingTab,
   Setting,
   setIcon,
+  getIcon,
+  getIconIds,
   Notice,
   App,
   WorkspaceLeaf,
   View,
+  MarkdownView,
+  FuzzySuggestModal,
+  FuzzyMatch,
   TFile,
+  normalizePath,
 } from "obsidian";
 
 // --- settings ---------------------------------------------------------------
+
+export interface TemplateButton {
+  template: string; // vault path to the Templater template (.md)
+  icon: string; // icon id (built-in Lucide, or any plugin-registered icon)
+  tooltip: string; // hover label / aria-label for the header button
+}
 
 export interface HubSidebarSettings {
   outlineTiers: number;
@@ -24,6 +36,7 @@ export interface HubSidebarSettings {
   sidebarRibbon: boolean; // show a ribbon icon that toggles the right sidebar
   newTabSearch: boolean; // add a vault search field to the empty "New tab" page
   newTabQuote: string; // optional faint quote shown large above the new-tab search
+  templateButtons: TemplateButton[]; // header buttons that insert Templater templates
 }
 
 export const DEFAULT_SETTINGS: HubSidebarSettings = {
@@ -38,6 +51,7 @@ export const DEFAULT_SETTINGS: HubSidebarSettings = {
   sidebarRibbon: false,
   newTabSearch: true,
   newTabQuote: "",
+  templateButtons: [],
 };
 
 // The three views the switcher rotates between. Icons are Lucide names.
@@ -68,12 +82,6 @@ export const VIEW_LABELS: Record<string, string> = {
 interface InternalPlugin {
   enabled?: boolean;
   enable?: (reloadApp: boolean) => void;
-  instance?: unknown;
-}
-
-// The core "Search" (global-search) plugin instance exposes openGlobalSearch().
-interface GlobalSearchInstance {
-  openGlobalSearch?: (query: string) => void;
 }
 
 interface InternalPlugins {
@@ -83,6 +91,20 @@ interface InternalPlugins {
 
 interface AppWithInternalPlugins extends App {
   internalPlugins?: InternalPlugins;
+}
+
+// Community-plugin registry (undocumented but stable; not in the public App type).
+interface CommunityPlugins {
+  getPlugin?: (id: string) => unknown;
+}
+interface AppWithPlugins extends App {
+  plugins?: CommunityPlugins;
+  commands?: { executeCommandById?: (id: string) => boolean };
+}
+// The Templater plugin instance — only the bits we touch (its API is internal).
+interface TemplaterPlugin {
+  templater?: { append_template_to_active_file?: (file: TFile) => Promise<void> };
+  settings?: { templates_folder?: string };
 }
 
 // `View` exposes contentEl/getViewType at runtime; type them narrowly here.
@@ -113,6 +135,9 @@ export default class HubSidebarPlugin extends Plugin {
   // `injectAll` is bound and reused as a listener; keep a stable reference.
   private boundInjectAll!: () => void;
 
+  // Re-applies the Templater header buttons; registered on several workspace events.
+  private boundApplyTemplateButtons!: () => void;
+
   // `recompute` is registered on several workspace/window events; keep a stable
   // reference so the registrations all share one rAF-debounced implementation.
   private boundRecompute!: () => void;
@@ -138,7 +163,6 @@ export default class HubSidebarPlugin extends Plugin {
     // undocumented and could change; failure here is non-fatal.
     this.enableCore("backlink");
     this.enableCore("outgoing-link");
-    this.enableCore("global-search");
 
     // Feature 2: a command (palette + assignable hotkey) that toggles the right
     // sidebar. Always registered; the optional ribbon is gated by a setting.
@@ -153,10 +177,11 @@ export default class HubSidebarPlugin extends Plugin {
     this.boundRecompute = () => this.scheduleCenterOffset();
     this.registerEvent(this.app.workspace.on("layout-change", this.boundInjectAll));
     this.registerEvent(this.app.workspace.on("active-leaf-change", this.boundInjectAll));
-    // Focus the new-tab search field when its empty tab becomes the active leaf.
-    this.registerEvent(
-      this.app.workspace.on("active-leaf-change", (leaf) => this.focusNewTabSearch(leaf)),
-    );
+    // Templater header buttons: (re)apply as views open / change / reload.
+    this.boundApplyTemplateButtons = () => this.applyTemplateButtons();
+    this.registerEvent(this.app.workspace.on("layout-change", this.boundApplyTemplateButtons));
+    this.registerEvent(this.app.workspace.on("active-leaf-change", this.boundApplyTemplateButtons));
+    this.registerEvent(this.app.workspace.on("file-open", this.boundApplyTemplateButtons));
 
     // Feature 1: keep --hub-center-offset fresh. updateCenterOffset() early-
     // returns when the feature is off, so these listeners cost nothing extra in
@@ -167,6 +192,7 @@ export default class HubSidebarPlugin extends Plugin {
 
     this.app.workspace.onLayoutReady(() => {
       this.injectAll();
+      this.applyTemplateButtons();
       this.updateCenterOffset();
     });
   }
@@ -187,6 +213,9 @@ export default class HubSidebarPlugin extends Plugin {
     activeDocument
       .querySelectorAll(".hub-newtab-quote, .hub-newtab-search")
       .forEach((el) => el.remove());
+    this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
+      leaf.view.containerEl.querySelectorAll("[data-hub-tpl-btn]").forEach((el) => el.remove());
+    });
     this.clearTabGroupMarkers();
   }
 
@@ -389,28 +418,23 @@ export default class HubSidebarPlugin extends Plugin {
       container;
 
     if (this.settings.newTabSearch) {
-      const wrap = createDiv({ cls: "hub-newtab-search" });
-      const icon = wrap.createSpan({ cls: "hub-newtab-search-icon" });
-      setIcon(icon, "search");
-      const input = wrap.createEl("input", {
-        cls: "hub-newtab-search-input",
-        attr: {
-          type: "search",
-          placeholder: "Search your notes…",
-          "aria-label": "Search your notes",
-          spellcheck: "false",
-        },
+      // A bar imprinted into the page that opens the quick switcher on click.
+      const bar = createDiv({
+        cls: "hub-newtab-search",
+        attr: { role: "button", tabindex: "0", "aria-label": "Search your notes" },
       });
-      // Plain listener: the input is removed with the view, so it cleans itself up.
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
+      const icon = bar.createSpan({ cls: "hub-newtab-search-icon" });
+      setIcon(icon, "search");
+      bar.createSpan({ cls: "hub-newtab-search-text", text: "Search your notes…" });
+      // Plain listeners: the bar is removed with the view, so it cleans itself up.
+      bar.addEventListener("click", () => this.openQuickSwitcher());
+      bar.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          this.runGlobalSearch(input.value);
-        } else if (e.key === "Escape") {
-          input.blur();
+          this.openQuickSwitcher();
         }
       });
-      host.prepend(wrap);
+      host.prepend(bar);
     }
 
     // The faint quote sits above the search field — prepended last so it lands first.
@@ -422,33 +446,76 @@ export default class HubSidebarPlugin extends Plugin {
     container.querySelectorAll(".hub-newtab-quote, .hub-newtab-search").forEach((el) => el.remove());
   }
 
-  // Focus the field when an empty tab becomes active, so opening a new tab lets
-  // you type straight away. Best-effort; no-op if the field is absent.
-  focusNewTabSearch(leaf: WorkspaceLeaf | null) {
-    if (!leaf || !this.settings.newTabSearch) return;
-    const view = leaf.view as ViewWithContent | undefined;
-    if (!view || typeof view.getViewType !== "function" || view.getViewType() !== "empty") return;
-    const input = view.contentEl.querySelector<HTMLInputElement>(".hub-newtab-search-input");
-    if (input) window.setTimeout(() => input.focus(), 0);
+  // Opens the quick switcher ("Find or create a note") from the search bar.
+  openQuickSwitcher() {
+    const ran = (this.app as AppWithPlugins).commands?.executeCommandById?.("switcher:open");
+    if (!ran) new Notice("Hub Sidebar: enable the core Quick Switcher to search.");
   }
 
-  // Opens the core global-search pane with the query (full-text search).
-  runGlobalSearch(query: string) {
-    const q = query.trim();
-    if (!q) return;
-    try {
-      const ip = (this.app as AppWithInternalPlugins).internalPlugins;
-      const gs =
-        ip && (ip.getPluginById ? ip.getPluginById("global-search") : ip.plugins?.["global-search"]);
-      const inst = gs?.instance as GlobalSearchInstance | undefined;
-      if (inst && typeof inst.openGlobalSearch === "function") {
-        inst.openGlobalSearch(q);
-        return;
-      }
-    } catch {
-      /* non-fatal — fall through to the notice */
+  // --- Templater template buttons ---------------------------------------------
+  // Templater's API is internal/undocumented, so resolve + guard defensively.
+  private templater(): TemplaterPlugin | undefined {
+    const tp = (this.app as AppWithPlugins).plugins?.getPlugin?.("templater-obsidian");
+    return tp as TemplaterPlugin | undefined;
+  }
+
+  templaterAvailable(): boolean {
+    return typeof this.templater()?.templater?.append_template_to_active_file === "function";
+  }
+
+  // Markdown files usable as templates: Templater's configured folder, else the
+  // whole vault (mirrors Templater's own enumeration).
+  templateFiles(): TFile[] {
+    const folder = (this.templater()?.settings?.templates_folder ?? "").trim();
+    const all = this.app.vault.getMarkdownFiles();
+    if (!folder) return all;
+    const root = normalizePath(folder);
+    return all.filter((f) => f.path === root || f.path.startsWith(root + "/"));
+  }
+
+  // (Re)apply the configured buttons to every open markdown view's header.
+  applyTemplateButtons() {
+    this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
+      if (leaf.view instanceof MarkdownView) this.addButtonsToView(leaf.view);
+    });
+  }
+
+  addButtonsToView(view: MarkdownView) {
+    // addAction does not dedupe, so purge our previous buttons before re-adding.
+    view.containerEl.querySelectorAll("[data-hub-tpl-btn]").forEach((el) => el.remove());
+    if (!this.templaterAvailable()) return; // Templater absent: show no buttons
+    for (const b of this.settings.templateButtons) {
+      const path = b.template.trim();
+      if (!path) continue;
+      const icon = getIcon(b.icon) ? b.icon : "file-plus";
+      const el = view.addAction(icon, b.tooltip || "Insert template", () => {
+        void this.insertTemplate(path, view);
+      });
+      el.setAttribute("data-hub-tpl-btn", "1");
     }
-    new Notice("Hub Sidebar: enable the core Search plugin to use new-tab search.");
+  }
+
+  async insertTemplate(path: string, view: MarkdownView) {
+    const engine = this.templater()?.templater;
+    const append = engine?.append_template_to_active_file;
+    if (typeof append !== "function") {
+      new Notice("Templater is not installed or enabled.");
+      return;
+    }
+    const file = this.app.vault.getAbstractFileByPath(normalizePath(path));
+    if (!(file instanceof TFile)) {
+      new Notice("Template not found: " + path);
+      return;
+    }
+    // Templater targets the workspace-active file, so make the note whose button
+    // was clicked active first — otherwise it could write to a different pane.
+    this.app.workspace.setActiveLeaf(view.leaf, { focus: true });
+    try {
+      await append.call(engine, file);
+    } catch (e) {
+      console.warn("[hub-sidebar] template insert failed", e);
+      new Notice("Hub Sidebar: template insert failed (see console).");
+    }
   }
 
   // --- graph box sizing -------------------------------------------------------
@@ -527,7 +594,12 @@ export default class HubSidebarPlugin extends Plugin {
   }
 
   async saveSettings() {
-    await this.saveData(this.settings);
+    try {
+      await this.saveData(this.settings);
+    } catch (e) {
+      console.warn("[hub-sidebar] failed to save settings", e);
+      new Notice("Hub Sidebar: could not save settings (see console).");
+    }
     this.applyBodyClasses();
     this.syncToggleButton();
     // clear stale labels/switchers, then re-inject per current settings
@@ -535,6 +607,7 @@ export default class HubSidebarPlugin extends Plugin {
       .querySelectorAll(".hub-switcher, .hub-label, .hub-newtab-quote, .hub-newtab-search")
       .forEach((el) => el.remove());
     this.injectAll();
+    this.applyTemplateButtons();
   }
 }
 
@@ -702,5 +775,137 @@ export class HubSidebarSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           }),
       );
+
+    this.displayTemplateButtons(containerEl);
+  }
+
+  displayTemplateButtons(containerEl: HTMLElement) {
+    new Setting(containerEl).setName("Templater template buttons").setHeading();
+    // Render into its own container so add/remove/pick can refresh just this list
+    // (without re-running the whole, now-deprecated, settings-tab display()).
+    const list = containerEl.createDiv();
+    this.renderTemplateButtons(list);
+  }
+
+  renderTemplateButtons(list: HTMLElement) {
+    list.empty();
+    new Setting(list)
+      .setDesc(
+        this.plugin.templaterAvailable()
+          ? "Each button shows in a note's header (next to the reading-view toggle) and inserts its template at the cursor. Pick a template, an icon, and a tooltip."
+          : "Install and enable the Templater community plugin to use these buttons.",
+      )
+      .addButton((b) =>
+        b
+          .setButtonText("Add button")
+          .setCta()
+          .onClick(async () => {
+            this.plugin.settings.templateButtons.push({
+              template: "",
+              icon: "file-plus",
+              tooltip: "",
+            });
+            await this.plugin.saveSettings();
+            this.renderTemplateButtons(list);
+          }),
+      );
+
+    this.plugin.settings.templateButtons.forEach((btn, i) => {
+      const file = btn.template
+        ? this.app.vault.getAbstractFileByPath(normalizePath(btn.template))
+        : null;
+      const tplLabel = file ? file.name : btn.template || "Choose template…";
+      const row = new Setting(list).setName("Button " + (i + 1));
+      row.addButton((b) =>
+        b
+          .setIcon(getIcon(btn.icon) ? btn.icon : "file-plus")
+          .setTooltip("Choose icon")
+          .onClick(() =>
+            new IconPickerModal(this.app, async (id) => {
+              this.plugin.settings.templateButtons[i].icon = id;
+              await this.plugin.saveSettings();
+              this.renderTemplateButtons(list);
+            }).open(),
+          ),
+      );
+      row.addButton((b) =>
+        b
+          .setButtonText(tplLabel)
+          .setTooltip("Choose template")
+          .onClick(() =>
+            new TemplatePickerModal(this.app, this.plugin.templateFiles(), async (f) => {
+              this.plugin.settings.templateButtons[i].template = f.path;
+              await this.plugin.saveSettings();
+              this.renderTemplateButtons(list);
+            }).open(),
+          ),
+      );
+      row.addText((t) =>
+        t
+          .setPlaceholder("Tooltip")
+          .setValue(btn.tooltip)
+          .onChange(async (v) => {
+            this.plugin.settings.templateButtons[i].tooltip = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+      row.addExtraButton((b) =>
+        b
+          .setIcon("trash")
+          .setTooltip("Remove")
+          .onClick(async () => {
+            this.plugin.settings.templateButtons.splice(i, 1);
+            await this.plugin.saveSettings();
+            this.renderTemplateButtons(list);
+          }),
+      );
+    });
+  }
+}
+
+// Searchable picker over all registered icons (built-in Lucide + plugin-added).
+class IconPickerModal extends FuzzySuggestModal<string> {
+  constructor(
+    app: App,
+    private readonly onChoose: (id: string) => void | Promise<void>,
+  ) {
+    super(app);
+    this.setPlaceholder("Search icons…");
+  }
+  getItems(): string[] {
+    return getIconIds();
+  }
+  getItemText(id: string): string {
+    return id;
+  }
+  renderSuggestion(match: FuzzyMatch<string>, el: HTMLElement): void {
+    el.addClass("hub-icon-suggestion");
+    const ic = el.createSpan({ cls: "hub-icon-suggestion-icon" });
+    setIcon(ic, match.item);
+    el.createSpan({ text: match.item });
+  }
+  onChooseItem(id: string): void {
+    void this.onChoose(id);
+  }
+}
+
+// Searchable picker over the candidate template files.
+class TemplatePickerModal extends FuzzySuggestModal<TFile> {
+  constructor(
+    app: App,
+    private readonly files: TFile[],
+    private readonly onChoose: (file: TFile) => void | Promise<void>,
+  ) {
+    super(app);
+    this.setPlaceholder("Search templates…");
+  }
+  getItems(): TFile[] {
+    return this.files;
+  }
+  getItemText(file: TFile): string {
+    return file.path;
+  }
+  onChooseItem(file: TFile): void {
+    void this.onChoose(file);
   }
 }
