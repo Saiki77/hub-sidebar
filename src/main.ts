@@ -169,6 +169,7 @@ export default class HubSidebarPlugin extends Plugin {
       this.statusEl = null;
     }
     activeDocument.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
+    this.clearTabGroupMarkers();
   }
 
   // --- body classes + CSS vars that drive the stylesheet ----------------------
@@ -287,6 +288,10 @@ export default class HubSidebarPlugin extends Plugin {
 
   // --- label + switcher injection --------------------------------------------
   injectAll() {
+    // Reset the tab-group markers; re-applied below. They let the stylesheet hide
+    // a group's tab bar without a :has() parent selector.
+    this.clearTabGroupMarkers();
+
     this.app.workspace.iterateAllLeaves((leaf) => {
       const view = leaf.view as ViewWithContent | undefined;
       if (!view || typeof view.getViewType !== "function") return;
@@ -298,6 +303,11 @@ export default class HubSidebarPlugin extends Plugin {
       const isHost = HOST_TYPES.indexOf(type) !== -1;
       const isOutline = type === "outline";
       if (!isHost && !isOutline) return;
+
+      // Mark the enclosing tab group so the stylesheet can hide its tab bar
+      // (outline: always; host views: when "Hide sidebar tab bar" is on).
+      const tabs = (leaf as LeafWithContainer).containerEl.closest(".workspace-tabs");
+      if (tabs) tabs.classList.add(isHost ? "hub-tabs-host" : "hub-tabs-outline");
 
       // header label above the box / outline
       if (this.settings.showLabels && VIEW_LABELS[type]) {
@@ -325,6 +335,14 @@ export default class HubSidebarPlugin extends Plugin {
       el = el.parentElement;
     }
     return false;
+  }
+
+  // Removes the .hub-tabs-host / .hub-tabs-outline markers from every tab group.
+  // injectAll() re-adds them for the current hub panes; onunload() leaves none.
+  clearTabGroupMarkers() {
+    activeDocument
+      .querySelectorAll(".workspace-tabs.hub-tabs-host, .workspace-tabs.hub-tabs-outline")
+      .forEach((el) => el.classList.remove("hub-tabs-host", "hub-tabs-outline"));
   }
 
   // --- graph box sizing -------------------------------------------------------

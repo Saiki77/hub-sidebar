@@ -2,7 +2,9 @@
    Hub Sidebar — styles.css  (auto-loaded by the plugin)
    Publish-style right sidebar. Theme-agnostic: core selectors + core variables.
    The plugin adds the real Graph/Incoming/Outgoing switcher and the section
-   labels; this file does the look.
+   labels; this file does the look. These overrides win on selector specificity
+   (the selectors are deliberately specific, 0,2,0+ vs core's 0,1,0 defaults) and
+   plugin-after-theme load order, so no forced overrides are required.
    ============================================================================= */
 
 
@@ -10,16 +12,16 @@
    Driven by a body class the plugin sets from its settings (default hub-tiers-2).
    Counts NESTING DEPTH, not literal H1/H2 (Obsidian stores no heading level). */
 body.hub-tiers-1 [data-type="outline"] .tree-item-children {
-  display: none !important;
+  display: none;
 }
 body.hub-tiers-2 [data-type="outline"] .tree-item-children > .tree-item > .tree-item-children {
-  display: none !important;
+  display: none;
 }
 body.hub-tiers-3 [data-type="outline"]
   .tree-item-children > .tree-item
   > .tree-item-children > .tree-item
   > .tree-item-children {
-  display: none !important;
+  display: none;
 }
 
 
@@ -29,17 +31,17 @@ body.hub-tiers-3 [data-type="outline"]
 }
 [data-type="outline"] .tree-item-icon,
 [data-type="outline"] .collapse-icon {
-  display: none !important;
-  width: 0 !important;
-  margin: 0 !important;
+  display: none;
+  width: 0;
+  margin: 0;
 }
 [data-type="outline"] .tree-item-self {
-  padding-inline-start: var(--hub-row-pad) !important;
-  padding-top: 2px !important;
-  padding-bottom: 2px !important;
+  padding-inline-start: var(--hub-row-pad);
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 [data-type="outline"] .tree-item-inner {
-  padding-inline-start: 0 !important;
+  padding-inline-start: 0;
   font-size: var(--font-ui-small);
   line-height: 1.5;
   color: var(--nav-item-color);
@@ -51,13 +53,15 @@ body.hub-tiers-3 [data-type="outline"]
 [data-type="outline"] .nav-header,
 [data-type="outline"] .nav-buttons-container,
 [data-type="outline"] .view-content > .search-input-container {
-  display: none !important;
+  display: none;
 }
-/* hide the lone outline tab-header icon (keep the outline in its OWN group) */
+/* hide the lone outline tab-header icon (keep the outline in its OWN group).
+   The plugin marks the enclosing tab group with .hub-tabs-outline so this needs
+   no parent-matching selector. */
 .workspace-split.mod-right-split
-  .workspace-tabs:has(.workspace-leaf-content[data-type="outline"])
+  .workspace-tabs.hub-tabs-outline
   > .workspace-tab-header-container {
-  display: none !important;
+  display: none;
 }
 
 
@@ -69,7 +73,7 @@ body.hub-tiers-3 [data-type="outline"]
 .workspace-leaf-content[data-type="backlink"] > .view-header,
 .workspace-leaf-content[data-type="outgoing-link"] > .view-header,
 .workspace-leaf-content[data-type="outline"] > .view-header {
-  display: none !important;
+  display: none;
 }
 
 
@@ -79,26 +83,26 @@ body.hub-tiers-3 [data-type="outline"]
    The other hairlines (inter-pane handle, tab header, leaf) are always removed. */
 body:not(.hub-show-divider) .workspace-split.mod-right-split,
 body:not(.hub-show-divider) .workspace .mod-right-split {
-  border-inline-start: none !important;
-  box-shadow: none !important;
+  border-inline-start: none;
+  box-shadow: none;
 }
-body:not(.hub-show-divider) .workspace:has(> .mod-right-split) > .workspace-leaf-resize-handle {
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
+body:not(.hub-show-divider) .workspace > .workspace-leaf-resize-handle {
+  border: none;
+  box-shadow: none;
+  background-color: transparent;
 }
 .workspace-split.mod-right-split .workspace-leaf-resize-handle {
-  border: none !important;
-  box-shadow: none !important;
-  background-color: transparent !important;
+  border: none;
+  box-shadow: none;
+  background-color: transparent;
 }
 .workspace-split.mod-right-split .workspace-tab-header-container {
-  border-bottom: none !important;
-  box-shadow: none !important;
+  border-bottom: none;
+  box-shadow: none;
 }
 .workspace-split.mod-right-split .workspace-tabs .workspace-leaf {
-  border: none !important;
-  box-shadow: none !important;
+  border: none;
+  box-shadow: none;
 }
 
 
@@ -111,30 +115,30 @@ body:not(.hub-show-divider) .workspace:has(> .mod-right-split) > .workspace-leaf
 .workspace-leaf-content[data-type="localgraph"],
 .workspace-leaf-content[data-type="backlink"],
 .workspace-leaf-content[data-type="outgoing-link"] {
-  padding: var(--hub-top-pad, 16px) 16px 16px 16px !important;  /* top via setting */
-  box-sizing: border-box !important;
+  padding: var(--hub-top-pad, 16px) 16px 16px 16px;  /* top via setting */
+  box-sizing: border-box;
 }
 .workspace-leaf-content[data-type="localgraph"] .view-content,
 .workspace-leaf-content[data-type="backlink"] .view-content,
 .workspace-leaf-content[data-type="outgoing-link"] .view-content {
   position: relative;                 /* anchors the switcher + graph controls  */
-  margin: 0 !important;
-  width: auto !important;
-  max-width: 100% !important;
-  box-sizing: border-box !important;
+  margin: 0;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-l);
   overflow: hidden;                   /* clip to rounded corners                 */
   background-color: var(--background-primary);
 }
 
-/* Graph box shape: the plugin sets an explicit inline HEIGHT = box width / the
-   "Graph box shape" ratio. We can't use CSS aspect-ratio here because Minimal
-   forces the graph view to grow and fill the pane height (which overrides
-   aspect-ratio). flex:0 0 auto !important stops that growth so the inline height
-   is honored; max-height guards a very tall ratio from overflowing the pane. */
+/* Graph box shape: the plugin sets an explicit inline HEIGHT (= box width / the
+   "Graph box shape" ratio), because core grows the graph view to fill the pane
+   height (which would otherwise beat CSS aspect-ratio). The flex rule below stops
+   that growth so the inline height is honored. max-height guards a very tall ratio
+   from overflowing the pane. */
 .workspace-leaf-content[data-type="localgraph"] .view-content {
-  flex: 0 0 auto !important;
+  flex: 0 0 auto;
   max-height: 70vh;
 }
 
@@ -221,19 +225,13 @@ body:not(.hub-show-divider) .workspace:has(> .mod-right-split) > .workspace-leaf
 
 /* === Optional: hide the row of tab icons above the box =======================
    Gated by a body class the plugin sets from the "Hide sidebar tab bar" setting.
-   Scoped to the group that contains a graph/backlink/outgoing pane so the
-   outline group is unaffected. Heads-up: this also hides switching to any other
-   tabs in that same group (calendar, tags, etc.). */
+   The plugin marks each hub tab group with .hub-tabs-host so this needs no
+   parent-matching selector. Heads-up: this also hides switching to any other tabs
+   in that same group (calendar, tags, etc.). */
 body.hub-hide-tabbar .workspace-split.mod-right-split
-  .workspace-tabs:has(.workspace-leaf-content[data-type="localgraph"])
-  > .workspace-tab-header-container,
-body.hub-hide-tabbar .workspace-split.mod-right-split
-  .workspace-tabs:has(.workspace-leaf-content[data-type="backlink"])
-  > .workspace-tab-header-container,
-body.hub-hide-tabbar .workspace-split.mod-right-split
-  .workspace-tabs:has(.workspace-leaf-content[data-type="outgoing-link"])
+  .workspace-tabs.hub-tabs-host
   > .workspace-tab-header-container {
-  display: none !important;
+  display: none;
 }
 
 
