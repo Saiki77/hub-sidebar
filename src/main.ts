@@ -37,6 +37,9 @@ export interface HubSidebarSettings {
   sidebarRibbon: boolean; // show a ribbon icon that toggles the right sidebar
   newTabSearch: boolean; // add a vault search field to the empty "New tab" page
   newTabQuote: string; // optional faint quote shown large above the new-tab search
+  newTabQuoteSize: number; // quote font size (rem, the max before responsive shrink)
+  newTabQuoteStrength: number; // quote colour nudge from the background (% toward text)
+  newTabSearchStrength: number; // search-box edge visibility (% toward text)
   templateButtons: TemplateButton[]; // header buttons that insert Templater templates
 }
 
@@ -52,6 +55,9 @@ export const DEFAULT_SETTINGS: HubSidebarSettings = {
   sidebarRibbon: false,
   newTabSearch: true,
   newTabQuote: "",
+  newTabQuoteSize: 2.6,
+  newTabQuoteStrength: 15,
+  newTabSearchStrength: 9,
   templateButtons: [],
 };
 
@@ -208,6 +214,9 @@ export default class HubSidebarPlugin extends Plugin {
     activeDocument.body.classList.remove(...BODY_CLASSES);
     activeDocument.body.style.removeProperty("--hub-graph-aspect");
     activeDocument.body.style.removeProperty("--hub-center-offset");
+    activeDocument.body.style.removeProperty("--hub-quote-size");
+    activeDocument.body.style.removeProperty("--hub-quote-mix");
+    activeDocument.body.style.removeProperty("--hub-search-strength");
     if (this.statusEl) {
       this.statusEl.remove();
       this.statusEl = null;
@@ -234,6 +243,12 @@ export default class HubSidebarPlugin extends Plugin {
     if (this.settings.centerOnScreen) activeDocument.body.classList.add("hub-center-screen");
     activeDocument.body.style.setProperty("--hub-graph-aspect", String(this.settings.graphAspect));
     activeDocument.body.style.setProperty("--hub-top-pad", this.settings.graphTopPad + "px");
+    activeDocument.body.style.setProperty("--hub-quote-size", this.settings.newTabQuoteSize + "rem");
+    activeDocument.body.style.setProperty("--hub-quote-mix", this.settings.newTabQuoteStrength + "%");
+    activeDocument.body.style.setProperty(
+      "--hub-search-strength",
+      this.settings.newTabSearchStrength + "%",
+    );
     // The class just turned on/off; make sure the offset + box size are current.
     this.applyGraphSizeAll();
     this.updateCenterOffset();
@@ -876,6 +891,45 @@ export class HubSidebarSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.newTabQuote)
           .onChange(async (v) => {
             this.plugin.settings.newTabQuote = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("New-tab quote size")
+      .setDesc("Maximum font size of the quote; it shrinks to stay on one line on narrow windows.")
+      .addSlider((s) =>
+        s
+          .setLimits(1.4, 4, 0.1)
+          .setValue(this.plugin.settings.newTabQuoteSize)
+          .onChange(async (v) => {
+            this.plugin.settings.newTabQuoteSize = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("New-tab quote strength")
+      .setDesc("How far the quote's colour is nudged from the background — higher is more visible.")
+      .addSlider((s) =>
+        s
+          .setLimits(4, 50, 1)
+          .setValue(this.plugin.settings.newTabQuoteStrength)
+          .onChange(async (v) => {
+            this.plugin.settings.newTabQuoteStrength = v;
+            await this.plugin.saveSettings();
+          }),
+      );
+
+    new Setting(containerEl)
+      .setName("New-tab search box strength")
+      .setDesc("Visibility of the search box's edge against the page.")
+      .addSlider((s) =>
+        s
+          .setLimits(2, 30, 1)
+          .setValue(this.plugin.settings.newTabSearchStrength)
+          .onChange(async (v) => {
+            this.plugin.settings.newTabSearchStrength = v;
             await this.plugin.saveSettings();
           }),
       );

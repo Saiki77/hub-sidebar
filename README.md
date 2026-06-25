@@ -40,7 +40,7 @@ graph card.
 
 Outline heading tiers · graph switcher · section labels · hide tab bar · sidebar
 divider line · graph box shape (with a live preview) · graph box top padding ·
-center note on screen · right-sidebar toggle button · new-tab search field · new-tab quote · templater buttons.
+center note on screen · right-sidebar toggle button · new-tab search field · new-tab quote (size + strength) · search box strength · templater buttons.
 
 ## Development
 

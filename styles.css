@@ -351,16 +351,19 @@ body.hub-center-screen
    Sits at the top of the empty "New tab" page's centered action stack. Plain
    class selectors on our own elements, so no specificity tricks are needed. */
 .hub-newtab-quote {
-  margin: 0 auto var(--size-4-9);
-  max-width: 96%;
+  /* min-width:0 + width:100% stop the flex item from sizing to its (nowrap)
+     content and overflowing rightward; text-align then centres it on the page. */
+  min-width: 0;
+  width: 100%;
+  margin-bottom: var(--size-4-9);
   text-align: center;
   white-space: nowrap;
-  font-size: clamp(1.5rem, 5.5vw, 2.9rem);
+  font-size: clamp(1.2rem, 5.5vw, var(--hub-quote-size, 2.6rem));
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.01em;
   /* an imprint: the page colour nudged a little, not a grey overlay */
-  color: color-mix(in srgb, var(--background-primary), var(--text-normal) 15%);
+  color: color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-quote-mix, 15%));
   user-select: none;
 }
 .hub-newtab-search {
@@ -372,7 +375,7 @@ body.hub-center-screen
   overflow: hidden;
   /* imprinted: the page colour with a soft inset edge */
   background: color-mix(in srgb, var(--background-primary), black 7%);
-  border: 1px solid color-mix(in srgb, var(--background-primary), var(--text-normal) 9%);
+  border: 1px solid color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-search-strength, 9%));
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 .hub-newtab-search:focus-within {
@@ -414,7 +417,7 @@ body.hub-center-screen
 }
 .hub-newtab-results:not(:empty) {
   padding: 4px;
-  border-top: 1px solid color-mix(in srgb, var(--background-primary), var(--text-normal) 9%);
+  border-top: 1px solid color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-search-strength, 9%));
 }
 .hub-newtab-result {
   padding: 7px 10px;
