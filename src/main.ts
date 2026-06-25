@@ -22,6 +22,7 @@ export interface HubSidebarSettings {
   graphTopPad: number; // px of space above the framed box
   centerOnScreen: boolean; // shift the editor column to the window center
   sidebarRibbon: boolean; // show a ribbon icon that toggles the right sidebar
+  newTabSearch: boolean; // add a vault search field to the empty "New tab" page
 }
 
 export const DEFAULT_SETTINGS: HubSidebarSettings = {
@@ -34,6 +35,7 @@ export const DEFAULT_SETTINGS: HubSidebarSettings = {
   graphTopPad: 16,
   centerOnScreen: false,
   sidebarRibbon: false,
+  newTabSearch: true,
 };
 
 // The three views the switcher rotates between. Icons are Lucide names.
@@ -64,6 +66,12 @@ export const VIEW_LABELS: Record<string, string> = {
 interface InternalPlugin {
   enabled?: boolean;
   enable?: (reloadApp: boolean) => void;
+  instance?: unknown;
+}
+
+// The core "Search" (global-search) plugin instance exposes openGlobalSearch().
+interface GlobalSearchInstance {
+  openGlobalSearch?: (query: string) => void;
 }
 
 interface InternalPlugins {
@@ -128,6 +136,7 @@ export default class HubSidebarPlugin extends Plugin {
     // undocumented and could change; failure here is non-fatal.
     this.enableCore("backlink");
     this.enableCore("outgoing-link");
+    this.enableCore("global-search");
 
     // Feature 2: a command (palette + assignable hotkey) that toggles the right
     // sidebar. Always registered; the optional ribbon is gated by a setting.
@@ -142,6 +151,10 @@ export default class HubSidebarPlugin extends Plugin {
     this.boundRecompute = () => this.scheduleCenterOffset();
     this.registerEvent(this.app.workspace.on("layout-change", this.boundInjectAll));
     this.registerEvent(this.app.workspace.on("active-leaf-change", this.boundInjectAll));
+    // Focus the new-tab search field when its empty tab becomes the active leaf.
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", (leaf) => this.focusNewTabSearch(leaf)),
+    );
 
     // Feature 1: keep --hub-center-offset fresh. updateCenterOffset() early-
     // returns when the feature is off, so these listeners cost nothing extra in
@@ -169,6 +182,7 @@ export default class HubSidebarPlugin extends Plugin {
       this.statusEl = null;
     }
     activeDocument.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
+    activeDocument.querySelectorAll(".hub-newtab-search").forEach((el) => el.remove());
     this.clearTabGroupMarkers();
   }
 
@@ -295,10 +309,19 @@ export default class HubSidebarPlugin extends Plugin {
     this.app.workspace.iterateAllLeaves((leaf) => {
       const view = leaf.view as ViewWithContent | undefined;
       if (!view || typeof view.getViewType !== "function") return;
-      if (!this.isInRightSidebar(leaf)) return;
       const type = view.getViewType();
       const container = view.contentEl; // .view-content (the framed box)
       if (!container) return;
+
+      // New-tab ("empty") views live in the main area, not the right sidebar, so
+      // handle the optional search field before the sidebar filter below.
+      if (type === "empty") {
+        if (this.settings.newTabSearch) this.ensureNewTabSearch(container);
+        else this.removeNewTabSearch(container);
+        return;
+      }
+
+      if (!this.isInRightSidebar(leaf)) return;
 
       const isHost = HOST_TYPES.indexOf(type) !== -1;
       const isOutline = type === "outline";
@@ -343,6 +366,75 @@ export default class HubSidebarPlugin extends Plugin {
     activeDocument
       .querySelectorAll(".workspace-tabs.hub-tabs-host, .workspace-tabs.hub-tabs-outline")
       .forEach((el) => el.classList.remove("hub-tabs-host", "hub-tabs-outline"));
+  }
+
+  // --- new-tab search field ---------------------------------------------------
+  // Injects a vault-search input into the empty "New tab" page. Enter runs the
+  // core global (full-text) search for the query, complementing the page's own
+  // "Go to file" (quick switcher) action.
+  ensureNewTabSearch(container: HTMLElement) {
+    // Idempotent across re-injection: check the whole view, since the field may
+    // sit in .empty-state-container, .empty-state, or (fallback) the container.
+    if (container.querySelector(".hub-newtab-search")) return;
+    const host =
+      container.querySelector<HTMLElement>(".empty-state-container") ??
+      container.querySelector<HTMLElement>(".empty-state") ??
+      container;
+    const wrap = createDiv({ cls: "hub-newtab-search" });
+    const icon = wrap.createSpan({ cls: "hub-newtab-search-icon" });
+    setIcon(icon, "search");
+    const input = wrap.createEl("input", {
+      cls: "hub-newtab-search-input",
+      attr: {
+        type: "search",
+        placeholder: "Search your notes…",
+        "aria-label": "Search your notes",
+        spellcheck: "false",
+      },
+    });
+    // Plain listener: the input is removed with the view, so it cleans itself up.
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.runGlobalSearch(input.value);
+      } else if (e.key === "Escape") {
+        input.blur();
+      }
+    });
+    host.prepend(wrap);
+  }
+
+  removeNewTabSearch(container: HTMLElement) {
+    container.querySelectorAll(".hub-newtab-search").forEach((el) => el.remove());
+  }
+
+  // Focus the field when an empty tab becomes active, so opening a new tab lets
+  // you type straight away. Best-effort; no-op if the field is absent.
+  focusNewTabSearch(leaf: WorkspaceLeaf | null) {
+    if (!leaf || !this.settings.newTabSearch) return;
+    const view = leaf.view as ViewWithContent | undefined;
+    if (!view || typeof view.getViewType !== "function" || view.getViewType() !== "empty") return;
+    const input = view.contentEl.querySelector<HTMLInputElement>(".hub-newtab-search-input");
+    if (input) window.setTimeout(() => input.focus(), 0);
+  }
+
+  // Opens the core global-search pane with the query (full-text search).
+  runGlobalSearch(query: string) {
+    const q = query.trim();
+    if (!q) return;
+    try {
+      const ip = (this.app as AppWithInternalPlugins).internalPlugins;
+      const gs =
+        ip && (ip.getPluginById ? ip.getPluginById("global-search") : ip.plugins?.["global-search"]);
+      const inst = gs?.instance as GlobalSearchInstance | undefined;
+      if (inst && typeof inst.openGlobalSearch === "function") {
+        inst.openGlobalSearch(q);
+        return;
+      }
+    } catch {
+      /* non-fatal — fall through to the notice */
+    }
+    new Notice("Hub Sidebar: enable the core Search plugin to use new-tab search.");
   }
 
   // --- graph box sizing -------------------------------------------------------
@@ -564,6 +656,18 @@ export class HubSidebarSettingTab extends PluginSettingTab {
       .addToggle((t) =>
         t.setValue(this.plugin.settings.sidebarRibbon).onChange(async (v) => {
           this.plugin.settings.sidebarRibbon = v;
+          await this.plugin.saveSettings();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName("New-tab search field")
+      .setDesc(
+        'Add a search box to the empty "New tab" page. Press Enter to run a full-text search of your vault (complements the page\'s built-in "Go to file" quick switcher).',
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.newTabSearch).onChange(async (v) => {
+          this.plugin.settings.newTabSearch = v;
           await this.plugin.saveSettings();
         }),
       );

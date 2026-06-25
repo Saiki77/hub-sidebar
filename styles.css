@@ -330,3 +330,47 @@ body.hub-center-screen
   width: 14px;
   height: 14px;
 }
+
+
+/* === New-tab search field (injected by the plugin) ==========================
+   Sits at the top of the empty "New tab" page's centered action stack. Plain
+   class selectors on our own elements, so no specificity tricks are needed. */
+.hub-newtab-search {
+  position: relative;
+  width: min(440px, 80%);
+  margin: 0 auto var(--size-4-6);
+}
+.hub-newtab-search-icon {
+  position: absolute;
+  inset-inline-start: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.hub-newtab-search-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.hub-newtab-search-input {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px 0 36px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+}
+.hub-newtab-search-input::placeholder {
+  color: var(--text-faint);
+}
+.hub-newtab-search-input:hover {
+  border-color: var(--background-modifier-border-hover);
+}
+.hub-newtab-search-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+  outline: none;
+}

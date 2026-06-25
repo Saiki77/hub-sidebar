@@ -22,6 +22,9 @@ graph card.
   window when the sidebar is open.
 - **Right-sidebar toggle** — a command (assignable to a hotkey) and an optional
   status-bar button to hide/show the sidebar.
+- **New-tab search**: a search box on the empty "New tab" page; press Enter to run a
+  full-text search of your vault. On by default; complements the page's built-in
+  "Go to file" quick switcher.
 
 ## Screenshots
 
@@ -33,7 +36,7 @@ graph card.
 
 Outline heading tiers · graph switcher · section labels · hide tab bar · sidebar
 divider line · graph box shape (with a live preview) · graph box top padding ·
-center note on screen · right-sidebar toggle button.
+center note on screen · right-sidebar toggle button · new-tab search field.
 
 ## Development
 
