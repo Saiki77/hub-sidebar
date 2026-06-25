@@ -14,6 +14,7 @@ import {
   FuzzyMatch,
   TFile,
   normalizePath,
+  prepareFuzzySearch,
 } from "obsidian";
 
 // --- settings ---------------------------------------------------------------
@@ -99,7 +100,6 @@ interface CommunityPlugins {
 }
 interface AppWithPlugins extends App {
   plugins?: CommunityPlugins;
-  commands?: { executeCommandById?: (id: string) => boolean };
 }
 // The Templater plugin instance — only the bits we touch (its API is internal).
 interface TemplaterPlugin {
@@ -177,6 +177,9 @@ export default class HubSidebarPlugin extends Plugin {
     this.boundRecompute = () => this.scheduleCenterOffset();
     this.registerEvent(this.app.workspace.on("layout-change", this.boundInjectAll));
     this.registerEvent(this.app.workspace.on("active-leaf-change", this.boundInjectAll));
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", (leaf) => this.focusNewTabSearch(leaf)),
+    );
     // Templater header buttons: (re)apply as views open / change / reload.
     this.boundApplyTemplateButtons = () => this.applyTemplateButtons();
     this.registerEvent(this.app.workspace.on("layout-change", this.boundApplyTemplateButtons));
@@ -213,6 +216,9 @@ export default class HubSidebarPlugin extends Plugin {
     activeDocument
       .querySelectorAll(".hub-newtab-quote, .hub-newtab-search")
       .forEach((el) => el.remove());
+    activeDocument
+      .querySelectorAll(".hub-newtab-active")
+      .forEach((el) => el.classList.remove("hub-newtab-active"));
     this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
       leaf.view.containerEl.querySelectorAll("[data-hub-tpl-btn]").forEach((el) => el.remove());
     });
@@ -350,7 +356,7 @@ export default class HubSidebarPlugin extends Plugin {
       // handle the optional search field before the sidebar filter below.
       if (type === "empty") {
         if (this.settings.newTabSearch || this.settings.newTabQuote.trim()) {
-          this.ensureNewTabContent(container);
+          this.ensureNewTabContent(container, leaf);
         } else {
           this.removeNewTabContent(container);
         }
@@ -408,7 +414,7 @@ export default class HubSidebarPlugin extends Plugin {
   // Injects a vault-search input into the empty "New tab" page. Enter runs the
   // core global (full-text) search for the query, complementing the page's own
   // "Go to file" (quick switcher) action.
-  ensureNewTabContent(container: HTMLElement) {
+  ensureNewTabContent(container: HTMLElement, leaf: WorkspaceLeaf) {
     // Idempotent across re-injection: check the whole view, since the content may
     // sit in .empty-state-container, .empty-state, or (fallback) the container.
     if (container.querySelector(".hub-newtab-quote, .hub-newtab-search")) return;
@@ -417,39 +423,137 @@ export default class HubSidebarPlugin extends Plugin {
       container.querySelector<HTMLElement>(".empty-state") ??
       container;
 
-    if (this.settings.newTabSearch) {
-      // A bar imprinted into the page that opens the quick switcher on click.
-      const bar = createDiv({
-        cls: "hub-newtab-search",
-        attr: { role: "button", tabindex: "0", "aria-label": "Search your notes" },
-      });
-      const icon = bar.createSpan({ cls: "hub-newtab-search-icon" });
-      setIcon(icon, "search");
-      bar.createSpan({ cls: "hub-newtab-search-text", text: "Search your notes…" });
-      // Plain listeners: the bar is removed with the view, so it cleans itself up.
-      bar.addEventListener("click", () => this.openQuickSwitcher());
-      bar.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          this.openQuickSwitcher();
-        }
-      });
-      host.prepend(bar);
-    }
+    if (this.settings.newTabSearch) this.buildNewTabSearch(host, leaf);
 
-    // The faint quote sits above the search field — prepended last so it lands first.
+    // The quote sits above the search box — prepended last so it lands first.
     const quote = this.settings.newTabQuote.trim();
     if (quote) host.prepend(createDiv({ cls: "hub-newtab-quote", text: quote }));
   }
 
-  removeNewTabContent(container: HTMLElement) {
-    container.querySelectorAll(".hub-newtab-quote, .hub-newtab-search").forEach((el) => el.remove());
+  // An embedded fuzzy finder: an always-present input that shows note results only
+  // once you type. While results are shown, the page's action links are hidden
+  // (host gets .hub-newtab-active) so the expanding box replaces them.
+  buildNewTabSearch(host: HTMLElement, leaf: WorkspaceLeaf) {
+    host.removeClass("hub-newtab-active"); // fresh build = not searching yet
+    const box = createDiv({ cls: "hub-newtab-search" });
+    const row = box.createDiv({ cls: "hub-newtab-search-row" });
+    setIcon(row.createSpan({ cls: "hub-newtab-search-icon" }), "search");
+    const input = row.createEl("input", {
+      cls: "hub-newtab-search-input",
+      attr: {
+        type: "text",
+        placeholder: "Search your notes…",
+        "aria-label": "Search your notes",
+        spellcheck: "false",
+      },
+    });
+    const list = box.createDiv({ cls: "hub-newtab-results" });
+
+    let matches: TFile[] = [];
+    let selected = 0;
+
+    const open = (file: TFile) => void leaf.openFile(file);
+
+    const updateSelection = () => {
+      const items = list.querySelectorAll(".hub-newtab-result");
+      items.forEach((el, i) => el.classList.toggle("is-selected", i === selected));
+      items[selected]?.scrollIntoView({ block: "nearest" });
+    };
+
+    const render = () => {
+      list.empty();
+      if (!input.value.trim()) {
+        host.removeClass("hub-newtab-active");
+        return;
+      }
+      host.addClass("hub-newtab-active");
+      if (!matches.length) {
+        list.createDiv({ cls: "hub-newtab-result is-empty", text: "No notes found" });
+        return;
+      }
+      matches.forEach((file, i) => {
+        const item = list.createDiv({
+          cls: "hub-newtab-result" + (i === selected ? " is-selected" : ""),
+          text: file.path.replace(/\.md$/, ""),
+          attr: { role: "option" },
+        });
+        // mousedown (not click) so the input keeps focus until we open the file.
+        item.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          open(file);
+        });
+        item.addEventListener("mouseenter", () => {
+          selected = i;
+          updateSelection();
+        });
+      });
+    };
+
+    const search = () => {
+      const q = input.value.trim();
+      selected = 0;
+      if (!q) {
+        matches = [];
+        render();
+        return;
+      }
+      const fuzzy = prepareFuzzySearch(q);
+      const scored: { file: TFile; score: number }[] = [];
+      for (const f of this.app.vault.getMarkdownFiles()) {
+        const r = fuzzy(f.path);
+        if (r) scored.push({ file: f, score: r.score });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      matches = scored.slice(0, 12).map((s) => s.file);
+      render();
+    };
+
+    input.addEventListener("input", search);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (matches.length) {
+          selected = (selected + 1) % matches.length;
+          updateSelection();
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (matches.length) {
+          selected = (selected - 1 + matches.length) % matches.length;
+          updateSelection();
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (matches[selected]) open(matches[selected]);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        if (input.value) {
+          input.value = "";
+          search();
+        } else {
+          input.blur();
+        }
+      }
+    });
+
+    host.prepend(box);
   }
 
-  // Opens the quick switcher ("Find or create a note") from the search bar.
-  openQuickSwitcher() {
-    const ran = (this.app as AppWithPlugins).commands?.executeCommandById?.("switcher:open");
-    if (!ran) new Notice("Hub Sidebar: enable the core Quick Switcher to search.");
+  removeNewTabContent(container: HTMLElement) {
+    container.querySelectorAll(".hub-newtab-quote, .hub-newtab-search").forEach((el) => el.remove());
+    container
+      .querySelectorAll(".hub-newtab-active")
+      .forEach((el) => el.classList.remove("hub-newtab-active"));
+  }
+
+  // Focus the embedded search input when an empty tab becomes active, so opening a
+  // new tab lets you type immediately. Best-effort; no-op if absent.
+  focusNewTabSearch(leaf: WorkspaceLeaf | null) {
+    if (!leaf || !this.settings.newTabSearch) return;
+    const view = leaf.view as ViewWithContent | undefined;
+    if (!view || typeof view.getViewType !== "function" || view.getViewType() !== "empty") return;
+    const input = view.contentEl.querySelector<HTMLInputElement>(".hub-newtab-search-input");
+    if (input) window.setTimeout(() => input.focus(), 0);
   }
 
   // --- Templater template buttons ---------------------------------------------

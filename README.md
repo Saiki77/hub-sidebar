@@ -22,9 +22,9 @@ graph card.
   window when the sidebar is open.
 - **Right-sidebar toggle** — a command (assignable to a hotkey) and an optional
   status-bar button to hide/show the sidebar.
-- **New-tab search**: an imprinted search bar on the empty "New tab" page that opens
-  the quick switcher (find or create a note) on click. On by default. Optionally show a
-  large quote above it.
+- **New-tab search**: an imprinted search box on the empty "New tab" page. Type to
+  fuzzy-find notes inline — results expand in place and replace the action links;
+  arrow keys + Enter to open. On by default. Optionally show a large quote above it.
 - **Templater buttons**: configurable icon buttons in each note's header that insert a
   bound Templater template into the current note. Pick a template, an icon (from
   Obsidian's built-in set), and a tooltip in settings. Shown only when Templater is
