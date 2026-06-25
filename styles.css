@@ -368,96 +368,33 @@ body.hub-center-screen
   /* an imprint: the page colour nudged a little, not a grey overlay */
   color: color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-quote-mix, 15%));
 }
-.hub-newtab-search {
-  display: flex;
-  flex-direction: column;
-  width: min(580px, 88%);
+/* The finder reuses Obsidian's own .prompt / .suggestion-item styling so it looks
+   1:1 with the quick switcher. We only override placement, reset the empty-state's
+   inherited centering, and turn the floating modal into a stamped inline frame. */
+.hub-newtab-search.prompt {
+  position: static;
+  width: min(580px, 90%);
+  max-width: 90%;
   margin: 0 auto var(--size-4-6);
-  border-radius: var(--radius-m);
-  overflow: hidden;
-  /* imprinted/stamped: the page colour with a soft inset edge, no float shadow */
-  background: color-mix(in srgb, var(--background-primary), black 7%);
+  text-align: left;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--background-primary), black 6%);
   border: 1px solid color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-search-strength, 9%));
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
 }
-.hub-newtab-search:focus-within {
+.hub-newtab-search.prompt:focus-within {
   border-color: var(--interactive-accent);
 }
-.hub-newtab-search-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 14px;
-  /* the lower border / divider — present even when not writing */
-  border-bottom: 1px solid color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-search-strength, 9%));
-}
-.hub-newtab-search-icon {
-  display: flex;
-  color: var(--text-muted);
-}
-.hub-newtab-search-icon svg {
-  width: 16px;
-  height: 16px;
-}
-.hub-newtab-search-input {
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-}
-.hub-newtab-search-input::placeholder {
-  color: var(--text-faint);
-}
-/* results: Obsidian's native suggestion rows (left-aligned, switcher metrics,
-   scroll). text-align:left undoes the empty-state's inherited centering. */
-.hub-newtab-results {
-  display: flex;
-  flex-direction: column;
-  max-height: 40vh;
-  overflow-y: auto;
-  text-align: left;
-}
-.hub-newtab-results:not(:empty) {
-  padding: var(--size-4-1);
-}
-.hub-newtab-results .suggestion-item {
-  display: block;
-  padding: var(--size-4-2) var(--size-4-3);
-  border-radius: var(--radius-s);
-  font-size: var(--font-ui-medium);
-  line-height: 1.5;
-  color: var(--text-normal);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-.hub-newtab-results .suggestion-item.is-selected {
-  background-color: var(--background-modifier-hover);
-}
-.hub-newtab-results .suggestion-empty {
-  padding: var(--size-4-2) var(--size-4-3);
-  color: var(--text-muted);
-  text-align: center;
-}
-/* hint footer, shown only while results are up (host has .hub-newtab-active) */
-.hub-newtab-foot {
+/* collapse the results + footer until you type */
+.hub-newtab-search .prompt-results:empty {
   display: none;
-  gap: 16px;
-  padding: 6px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-search-strength, 9%));
-  font-size: var(--font-ui-smaller);
-  color: var(--text-faint);
 }
-.hub-newtab-active .hub-newtab-foot {
+.hub-newtab-search .prompt-instructions {
+  display: none;
+}
+.hub-newtab-active .prompt-instructions {
   display: flex;
 }
-/* While searching, the action links below are replaced by the expanding box. */
+/* while searching, the action links below are replaced by the expanding box */
 .hub-newtab-active .empty-state-action {
   display: none;
 }

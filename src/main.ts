@@ -455,11 +455,13 @@ export default class HubSidebarPlugin extends Plugin {
   // (host gets .hub-newtab-active) so the expanding box replaces them.
   buildNewTabSearch(host: HTMLElement, leaf: WorkspaceLeaf) {
     host.removeClass("hub-newtab-active"); // fresh build = not searching yet
-    const box = createDiv({ cls: "hub-newtab-search" });
-    const row = box.createDiv({ cls: "hub-newtab-search-row" });
-    setIcon(row.createSpan({ cls: "hub-newtab-search-icon" }), "search");
-    const input = row.createEl("input", {
-      cls: "hub-newtab-search-input",
+    // Built with Obsidian's own quick-switcher DOM + classes (prompt / prompt-input /
+    // prompt-results / suggestion-item / prompt-instructions) so the theme styles it
+    // 1:1 with the switcher; CSS only overrides placement and the stamped frame.
+    const box = createDiv({ cls: "hub-newtab-search prompt" });
+    const inputWrap = box.createDiv({ cls: "prompt-input-container" });
+    const input = inputWrap.createEl("input", {
+      cls: "prompt-input",
       attr: {
         type: "text",
         placeholder: "Search your notes…",
@@ -467,9 +469,16 @@ export default class HubSidebarPlugin extends Plugin {
         spellcheck: "false",
       },
     });
-    const list = box.createDiv({ cls: "hub-newtab-results" });
-    // Native-switcher-style hint footer (shown via CSS only while results are up).
-    box.createDiv({ cls: "hub-newtab-foot", text: "↑↓ navigate    ↵ open    esc clear" });
+    const list = box.createDiv({ cls: "prompt-results" });
+    const instructions = box.createDiv({ cls: "prompt-instructions" });
+    const addInstruction = (command: string, label: string) => {
+      const r = instructions.createDiv({ cls: "prompt-instruction" });
+      r.createSpan({ cls: "prompt-instruction-command", text: command });
+      r.createSpan({ text: label });
+    };
+    addInstruction("↑↓", "to navigate");
+    addInstruction("↵", "to open");
+    addInstruction("esc", "to clear");
 
     let matches: TFile[] = [];
     let selected = 0;
