@@ -351,12 +351,15 @@ body.hub-center-screen
    Sits at the top of the empty "New tab" page's centered action stack. Plain
    class selectors on our own elements, so no specificity tricks are needed. */
 .hub-newtab-quote {
-  /* min-width:0 + width:100% stop the flex item from sizing to its (nowrap)
-     content and overflowing rightward; text-align then centres it on the page. */
-  min-width: 0;
+  /* Flexbox centres the (over-wide, nowrap) span symmetrically — text-align can't,
+     it left-aligns overflow and lets it spill rightward (the old centering bug). */
+  display: flex;
+  justify-content: center;
   width: 100%;
   margin-bottom: var(--size-4-9);
-  text-align: center;
+  user-select: none;
+}
+.hub-newtab-quote > span {
   white-space: nowrap;
   font-size: clamp(1.2rem, 5.5vw, var(--hub-quote-size, 2.6rem));
   font-weight: 700;
@@ -364,7 +367,6 @@ body.hub-center-screen
   letter-spacing: -0.01em;
   /* an imprint: the page colour nudged a little, not a grey overlay */
   color: color-mix(in srgb, var(--background-primary), var(--text-normal) var(--hub-quote-mix, 15%));
-  user-select: none;
 }
 .hub-newtab-search {
   display: flex;
@@ -411,33 +413,37 @@ body.hub-center-screen
 .hub-newtab-search-input::placeholder {
   color: var(--text-faint);
 }
-/* results: match Obsidian's suggestion list — size, padding, selection, scroll */
+/* results: Obsidian's native suggestion rows (left-aligned, switcher metrics,
+   scroll). text-align:left undoes the empty-state's inherited centering. */
 .hub-newtab-results {
   display: flex;
   flex-direction: column;
   max-height: 40vh;
   overflow-y: auto;
+  text-align: left;
 }
 .hub-newtab-results:not(:empty) {
   padding: var(--size-4-1);
 }
-.hub-newtab-result {
+.hub-newtab-results .suggestion-item {
+  display: block;
   padding: var(--size-4-2) var(--size-4-3);
   border-radius: var(--radius-s);
   font-size: var(--font-ui-medium);
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--text-normal);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
 }
-.hub-newtab-result.is-selected {
+.hub-newtab-results .suggestion-item.is-selected {
   background-color: var(--background-modifier-hover);
 }
-.hub-newtab-result.is-empty {
+.hub-newtab-results .suggestion-empty {
+  padding: var(--size-4-2) var(--size-4-3);
   color: var(--text-muted);
-  cursor: default;
+  text-align: center;
 }
 /* hint footer, shown only while results are up (host has .hub-newtab-active) */
 .hub-newtab-foot {

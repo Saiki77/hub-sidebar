@@ -440,9 +440,14 @@ export default class HubSidebarPlugin extends Plugin {
 
     if (this.settings.newTabSearch) this.buildNewTabSearch(host, leaf);
 
-    // The quote sits above the search box — prepended last so it lands first.
-    const quote = this.settings.newTabQuote.trim();
-    if (quote) host.prepend(createDiv({ cls: "hub-newtab-quote", text: quote }));
+    // The quote sits above the search box — prepended last so it lands first. The
+    // text goes in a span so a flex parent can centre it even when it overflows.
+    const quoteText = this.settings.newTabQuote.trim();
+    if (quoteText) {
+      const quoteEl = createDiv({ cls: "hub-newtab-quote" });
+      quoteEl.createSpan({ text: quoteText });
+      host.prepend(quoteEl);
+    }
   }
 
   // An embedded fuzzy finder: an always-present input that shows note results only
@@ -472,7 +477,7 @@ export default class HubSidebarPlugin extends Plugin {
     const open = (file: TFile) => void leaf.openFile(file);
 
     const updateSelection = () => {
-      const items = list.querySelectorAll(".hub-newtab-result");
+      const items = list.querySelectorAll(".suggestion-item");
       items.forEach((el, i) => el.classList.toggle("is-selected", i === selected));
       items[selected]?.scrollIntoView({ block: "nearest" });
     };
@@ -485,12 +490,12 @@ export default class HubSidebarPlugin extends Plugin {
       }
       host.addClass("hub-newtab-active");
       if (!matches.length) {
-        list.createDiv({ cls: "hub-newtab-result is-empty", text: "No notes found" });
+        list.createDiv({ cls: "suggestion-empty", text: "No notes found" });
         return;
       }
       matches.forEach((file, i) => {
         const item = list.createDiv({
-          cls: "hub-newtab-result" + (i === selected ? " is-selected" : ""),
+          cls: "suggestion-item" + (i === selected ? " is-selected" : ""),
           text: file.path.replace(/\.md$/, ""),
           attr: { role: "option" },
         });
