@@ -463,6 +463,8 @@ export default class HubSidebarPlugin extends Plugin {
       },
     });
     const list = box.createDiv({ cls: "hub-newtab-results" });
+    // Native-switcher-style hint footer (shown via CSS only while results are up).
+    box.createDiv({ cls: "hub-newtab-foot", text: "↑↓ navigate    ↵ open    esc clear" });
 
     let matches: TFile[] = [];
     let selected = 0;
