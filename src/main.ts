@@ -23,6 +23,7 @@ export interface HubSidebarSettings {
   centerOnScreen: boolean; // shift the editor column to the window center
   sidebarRibbon: boolean; // show a ribbon icon that toggles the right sidebar
   newTabSearch: boolean; // add a vault search field to the empty "New tab" page
+  newTabQuote: string; // optional faint quote shown large above the new-tab search
 }
 
 export const DEFAULT_SETTINGS: HubSidebarSettings = {
@@ -36,6 +37,7 @@ export const DEFAULT_SETTINGS: HubSidebarSettings = {
   centerOnScreen: false,
   sidebarRibbon: false,
   newTabSearch: true,
+  newTabQuote: "",
 };
 
 // The three views the switcher rotates between. Icons are Lucide names.
@@ -182,7 +184,9 @@ export default class HubSidebarPlugin extends Plugin {
       this.statusEl = null;
     }
     activeDocument.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
-    activeDocument.querySelectorAll(".hub-newtab-search").forEach((el) => el.remove());
+    activeDocument
+      .querySelectorAll(".hub-newtab-quote, .hub-newtab-search")
+      .forEach((el) => el.remove());
     this.clearTabGroupMarkers();
   }
 
@@ -316,8 +320,11 @@ export default class HubSidebarPlugin extends Plugin {
       // New-tab ("empty") views live in the main area, not the right sidebar, so
       // handle the optional search field before the sidebar filter below.
       if (type === "empty") {
-        if (this.settings.newTabSearch) this.ensureNewTabSearch(container);
-        else this.removeNewTabSearch(container);
+        if (this.settings.newTabSearch || this.settings.newTabQuote.trim()) {
+          this.ensureNewTabContent(container);
+        } else {
+          this.removeNewTabContent(container);
+        }
         return;
       }
 
@@ -372,40 +379,47 @@ export default class HubSidebarPlugin extends Plugin {
   // Injects a vault-search input into the empty "New tab" page. Enter runs the
   // core global (full-text) search for the query, complementing the page's own
   // "Go to file" (quick switcher) action.
-  ensureNewTabSearch(container: HTMLElement) {
-    // Idempotent across re-injection: check the whole view, since the field may
+  ensureNewTabContent(container: HTMLElement) {
+    // Idempotent across re-injection: check the whole view, since the content may
     // sit in .empty-state-container, .empty-state, or (fallback) the container.
-    if (container.querySelector(".hub-newtab-search")) return;
+    if (container.querySelector(".hub-newtab-quote, .hub-newtab-search")) return;
     const host =
       container.querySelector<HTMLElement>(".empty-state-container") ??
       container.querySelector<HTMLElement>(".empty-state") ??
       container;
-    const wrap = createDiv({ cls: "hub-newtab-search" });
-    const icon = wrap.createSpan({ cls: "hub-newtab-search-icon" });
-    setIcon(icon, "search");
-    const input = wrap.createEl("input", {
-      cls: "hub-newtab-search-input",
-      attr: {
-        type: "search",
-        placeholder: "Search your notes…",
-        "aria-label": "Search your notes",
-        spellcheck: "false",
-      },
-    });
-    // Plain listener: the input is removed with the view, so it cleans itself up.
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        this.runGlobalSearch(input.value);
-      } else if (e.key === "Escape") {
-        input.blur();
-      }
-    });
-    host.prepend(wrap);
+
+    if (this.settings.newTabSearch) {
+      const wrap = createDiv({ cls: "hub-newtab-search" });
+      const icon = wrap.createSpan({ cls: "hub-newtab-search-icon" });
+      setIcon(icon, "search");
+      const input = wrap.createEl("input", {
+        cls: "hub-newtab-search-input",
+        attr: {
+          type: "search",
+          placeholder: "Search your notes…",
+          "aria-label": "Search your notes",
+          spellcheck: "false",
+        },
+      });
+      // Plain listener: the input is removed with the view, so it cleans itself up.
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          this.runGlobalSearch(input.value);
+        } else if (e.key === "Escape") {
+          input.blur();
+        }
+      });
+      host.prepend(wrap);
+    }
+
+    // The faint quote sits above the search field — prepended last so it lands first.
+    const quote = this.settings.newTabQuote.trim();
+    if (quote) host.prepend(createDiv({ cls: "hub-newtab-quote", text: quote }));
   }
 
-  removeNewTabSearch(container: HTMLElement) {
-    container.querySelectorAll(".hub-newtab-search").forEach((el) => el.remove());
+  removeNewTabContent(container: HTMLElement) {
+    container.querySelectorAll(".hub-newtab-quote, .hub-newtab-search").forEach((el) => el.remove());
   }
 
   // Focus the field when an empty tab becomes active, so opening a new tab lets
@@ -517,7 +531,9 @@ export default class HubSidebarPlugin extends Plugin {
     this.applyBodyClasses();
     this.syncToggleButton();
     // clear stale labels/switchers, then re-inject per current settings
-    activeDocument.querySelectorAll(".hub-switcher, .hub-label").forEach((el) => el.remove());
+    activeDocument
+      .querySelectorAll(".hub-switcher, .hub-label, .hub-newtab-quote, .hub-newtab-search")
+      .forEach((el) => el.remove());
     this.injectAll();
   }
 }
@@ -670,6 +686,21 @@ export class HubSidebarSettingTab extends PluginSettingTab {
           this.plugin.settings.newTabSearch = v;
           await this.plugin.saveSettings();
         }),
+      );
+
+    new Setting(containerEl)
+      .setName("New-tab quote")
+      .setDesc(
+        "A line shown large and faint above the new-tab search field. Leave empty for none.",
+      )
+      .addText((t) =>
+        t
+          .setPlaceholder("Don't delegate understanding")
+          .setValue(this.plugin.settings.newTabQuote)
+          .onChange(async (v) => {
+            this.plugin.settings.newTabQuote = v;
+            await this.plugin.saveSettings();
+          }),
       );
   }
 }

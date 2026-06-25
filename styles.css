@@ -335,6 +335,18 @@ body.hub-center-screen
 /* === New-tab search field (injected by the plugin) ==========================
    Sits at the top of the empty "New tab" page's centered action stack. Plain
    class selectors on our own elements, so no specificity tricks are needed. */
+.hub-newtab-quote {
+  width: min(640px, 90%);
+  margin: 0 auto var(--size-4-9);
+  text-align: center;
+  font-size: 2.4em;
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--text-normal);
+  opacity: 0.13; /* almost the background, just a touch lighter */
+  user-select: none;
+}
 .hub-newtab-search {
   position: relative;
   width: min(440px, 80%);
